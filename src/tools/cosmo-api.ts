@@ -1,0 +1,410 @@
+/**
+ * COSMO Backend API Client
+ * Wraps COSMO backend endpoints for agent tool calls
+ */
+
+export interface CosmoConfig {
+  baseUrl: string;
+  apiKey: string;
+  userId?: string;
+  orgId?: string;
+}
+
+export interface Contact {
+  id: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  company?: string;
+  title?: string;
+  linkedin_url?: string;
+  created_at?: string;
+  ai_insights?: {
+    suspected_pain_points?: Array<{ pain_point: string; evidence?: string }>;
+    suspected_goals?: Array<{ goal: string; evidence?: string }>;
+    buying_signals?: Array<{ signal: string; strength?: string }>;
+  };
+  profile?: {
+    relationship?: {
+      strength_score: number;
+      health_score: number;
+    };
+  };
+}
+
+export interface Segment {
+  id: string;
+  name: string;
+  description?: string;
+  criteria?: Record<string, unknown>;
+  is_active: boolean;
+}
+
+export interface SegmentScore {
+  segment_id: string;
+  segment_name: string;
+  fit_score: number;
+  status: string;
+  enrolled_in_campaign: boolean;
+}
+
+export interface EnrichmentResult {
+  contact_id: string;
+  insights_generated: boolean;
+  ai_insights?: Contact['ai_insights'];
+}
+
+export interface RelationshipScore {
+  contact_id: string;
+  strength_score: number;
+  health_score: number;
+  interactions_30d: number;
+  interactions_90d: number;
+}
+
+// ============ Context Types ============
+
+export interface TargetCriteria {
+  industries?: string[];
+  company_sizes?: string[];
+  job_titles?: string[];
+  regions?: string[];
+}
+
+export interface CompanyKnowledge {
+  product_name?: string;
+  product_description?: string;
+  value_propositions?: string[];
+  use_cases?: string[];
+}
+
+export interface Competitor {
+  name: string;
+  differentiators?: string[];
+  weaknesses?: string[];
+}
+
+export interface OrgContext {
+  organization_id: string;
+  icp_definition?: string;
+  target_criteria?: TargetCriteria;
+  company_knowledge?: CompanyKnowledge;
+  common_pain_points?: string[];
+  common_goals?: string[];
+  competitors?: Competitor[];
+  messaging_guidelines?: string;
+  ai_instructions?: string;
+}
+
+export interface UserPreferences {
+  default_language?: string;
+  timezone?: string;
+  notification_preferences?: Record<string, boolean>;
+}
+
+export interface RecentContact {
+  contact_id: string;
+  contact_name: string;
+  last_touched: string;
+  action: string;
+}
+
+export interface UserContext {
+  user_id: string;
+  organization_id: string;
+  preferences?: UserPreferences;
+  communication_style?: string;
+  preferred_email_length?: string;
+  personal_notes?: string;
+  recent_contacts?: RecentContact[];
+  ai_instructions?: string;
+}
+
+export interface MergedContext {
+  merged: {
+    // Org context
+    icp_definition?: string;
+    target_criteria?: TargetCriteria;
+    company_knowledge?: CompanyKnowledge;
+    common_pain_points?: string[];
+    common_goals?: string[];
+    competitors?: Competitor[];
+    messaging_guidelines?: string;
+    org_ai_instructions?: string;
+    // User context
+    user_preferences?: UserPreferences;
+    communication_style?: string;
+    preferred_email_length?: string;
+    personal_notes?: string;
+    recent_contacts?: RecentContact[];
+    user_ai_instructions?: string;
+    // Conversation
+    conversation_history?: ConversationHistoryItem[];
+  };
+  prompt_context: string;
+}
+
+export interface ConversationHistoryItem {
+  id: string;
+  session_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  contact_id?: string;
+  tools_used?: string[];
+  created_at: string;
+}
+
+export interface ContactSearchResponse<T = Contact> {
+  list: T[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export class CosmoApiClient {
+  private config: CosmoConfig;
+
+  constructor(config: CosmoConfig) {
+    this.config = config;
+  }
+
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown
+  ): Promise<T> {
+    const url = `${this.config.baseUrl}${path}`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${this.config.apiKey}`,
+    };
+
+    const response = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.log(`  [API] Error: ${response.status} - ${error.substring(0, 100)}`);
+      throw new Error(`COSMO API Error: ${response.status} - ${error}`);
+    }
+
+    return response.json();
+  }
+
+  // ============ Contact Operations ============
+
+  async getContact(contactId: string): Promise<Contact> {
+    const result = await this.request<{ data: Contact }>(
+      'GET',
+      `/v1/contacts/${contactId}`
+    );
+    return result.data;
+  }
+
+  async listContacts(params?: {
+    search?: string;
+    segment_id?: string;
+    limit?: number;
+  }): Promise<Contact[]> {
+    const query = new URLSearchParams();
+    if (params?.search) query.set('search', params.search);
+    if (params?.segment_id) query.set('segment_id', params.segment_id);
+    if (params?.limit) query.set('limit', params.limit.toString());
+
+    const result = await this.request<{ data: Contact[] }>(
+      'GET',
+      `/v1/contacts?${query.toString()}`
+    );
+    return result.data;
+  }
+
+  async createContact(data: Partial<Contact>): Promise<Contact> {
+    const result = await this.request<{ data: Contact }>(
+      'POST',
+      '/v1/contacts',
+      data
+    );
+    return result.data;
+  }
+
+  async updateContact(
+    contactId: string,
+    data: Partial<Contact>
+  ): Promise<Contact> {
+    const result = await this.request<{ data: Contact }>(
+      'PATCH',
+      `/v1/contacts/${contactId}`,
+      data
+    );
+    return result.data;
+  }
+
+  async searchContacts(filter: Record<string, unknown>, offset = 0, limit = 25): Promise<ContactSearchResponse> {
+    const query = new URLSearchParams();
+    query.set('offset', offset.toString());
+    query.set('limit', limit.toString());
+
+    const result = await this.request<{ data: ContactSearchResponse }>(
+      'POST',
+      `/v1/contacts/search?${query.toString()}`,
+      { filter }
+    );
+    return result.data;
+  }
+
+  async countContactsCreated(startDate: string, endDate: string): Promise<number> {
+    // Use backend filter operators: $gte, $lt (not >= or <)
+    const filter = {
+      created_at: {
+        '$gte': startDate,
+        '$lt': endDate,
+      },
+    };
+    const result = await this.searchContacts(filter, 0, 1);
+    return result.total;
+  }
+
+  // ============ Intelligence Operations ============
+
+  async enrichContact(
+    contactId: string,
+    forceRefresh = false
+  ): Promise<EnrichmentResult> {
+    const result = await this.request<{ data: EnrichmentResult }>(
+      'POST',
+      `/v1/intelligence/contacts/${contactId}/enrich`,
+      { force_refresh: forceRefresh }
+    );
+    return result.data;
+  }
+
+  async calculateSegmentScores(
+    contactId: string,
+    segmentIds?: string[]
+  ): Promise<SegmentScore[]> {
+    const result = await this.request<{ data: { scores: SegmentScore[] } }>(
+      'POST',
+      `/v1/intelligence/contacts/${contactId}/segment-scores`,
+      { segment_ids: segmentIds }
+    );
+    return result.data.scores;
+  }
+
+  async calculateRelationshipScore(
+    contactId: string
+  ): Promise<RelationshipScore> {
+    const result = await this.request<{ data: RelationshipScore }>(
+      'POST',
+      `/v1/intelligence/contacts/${contactId}/relationship-score`
+    );
+    return result.data;
+  }
+
+  // ============ Segment Operations ============
+
+  async listSegments(): Promise<Segment[]> {
+    const result = await this.request<{ data: Segment[] }>(
+      'GET',
+      '/v1/segmentations'
+    );
+    return result.data;
+  }
+
+  async getSegment(segmentId: string): Promise<Segment> {
+    const result = await this.request<{ data: Segment }>(
+      'GET',
+      `/v1/segmentations/${segmentId}`
+    );
+    return result.data;
+  }
+
+  async getSegmentContacts(segmentId: string): Promise<Contact[]> {
+    const result = await this.request<{ data: Contact[] }>(
+      'GET',
+      `/v1/segmentations/${segmentId}/contacts`
+    );
+    return result.data;
+  }
+
+  // ============ Orchestration ============
+
+  async triggerContactOrchestration(
+    contactId: string,
+    event: string
+  ): Promise<{ task_id: string }> {
+    const result = await this.request<{ data: { task_id: string } }>(
+      'POST',
+      `/v1/orchestration/contact`,
+      { contact_id: contactId, event }
+    );
+    return result.data;
+  }
+
+  // ============ Context Management ============
+
+  async getOrgContext(): Promise<OrgContext> {
+    const result = await this.request<{ data: OrgContext }>(
+      'GET',
+      '/v1/context/org'
+    );
+    return result.data;
+  }
+
+  async updateOrgContext(updates: Partial<OrgContext>): Promise<void> {
+    await this.request('PATCH', '/v1/context/org', updates);
+  }
+
+  async getUserContext(): Promise<UserContext> {
+    const result = await this.request<{ data: UserContext }>(
+      'GET',
+      '/v1/context/user'
+    );
+    return result.data;
+  }
+
+  async updateUserContext(updates: Partial<UserContext>): Promise<void> {
+    await this.request('PATCH', '/v1/context/user', updates);
+  }
+
+  async getMergedContext(sessionId?: string): Promise<MergedContext> {
+    const query = sessionId ? `?session_id=${sessionId}` : '';
+    const result = await this.request<{ data: MergedContext }>(
+      'GET',
+      `/v1/context/merged${query}`
+    );
+    return result.data;
+  }
+
+  // ============ Conversation History ============
+
+  async getConversationHistory(sessionId: string, limit = 20): Promise<ConversationHistoryItem[]> {
+    const result = await this.request<{ data: ConversationHistoryItem[] }>(
+      'GET',
+      `/v1/context/history?session_id=${sessionId}&limit=${limit}`
+    );
+    return result.data;
+  }
+
+  async saveConversationMessage(
+    sessionId: string,
+    role: 'user' | 'assistant',
+    content: string,
+    contactId?: string,
+    toolsUsed?: string[]
+  ): Promise<void> {
+    await this.request('POST', '/v1/context/history', {
+      session_id: sessionId,
+      role,
+      content,
+      contact_id: contactId,
+      tools_used: toolsUsed,
+    });
+  }
+
+  async clearConversationHistory(sessionId: string): Promise<void> {
+    await this.request('DELETE', `/v1/context/history?session_id=${sessionId}`);
+  }
+}
