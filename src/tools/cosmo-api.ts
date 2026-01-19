@@ -197,7 +197,7 @@ export interface ConversationHistoryItem {
 }
 
 export interface ContactSearchResponse<T = Contact> {
-  list: T[];
+  list: Array<{ entity: T }>;
   total: number;
   offset: number;
   limit: number;
@@ -251,16 +251,40 @@ export class CosmoApiClient {
     segment_id?: string;
     limit?: number;
   }): Promise<Contact[]> {
-    const query = new URLSearchParams();
-    if (params?.search) query.set('search', params.search);
-    if (params?.segment_id) query.set('segment_id', params.segment_id);
-    if (params?.limit) query.set('limit', params.limit.toString());
+    // Use POST /v1/contacts/search with proper filter structure
+    const offset = 0;
+    const limit = params?.limit || 25; // Increase default to get more results
 
-    const result = await this.request<{ data: Contact[] }>(
-      'GET',
-      `/v1/contacts?${query.toString()}`
-    );
-    return result.data;
+    // Build filter object
+    const filter: Record<string, any> = {};
+
+    if (params?.segment_id) {
+      filter.segment_id = params.segment_id;
+    }
+
+    // Get contacts from backend
+    const result = await this.searchContacts(filter, offset, limit);
+
+    // Extract contacts from {entity: Contact} wrapper
+    const contacts = result.list.map(item => item.entity);
+
+    // If search query provided, filter results client-side
+    if (params?.search) {
+      const searchLower = params.search.toLowerCase();
+      return contacts.filter(contact => {
+        const searchableText = [
+          contact.first_name,
+          contact.last_name,
+          contact.email,
+          contact.company,
+          contact.title
+        ].filter(Boolean).join(' ').toLowerCase();
+
+        return searchableText.includes(searchLower);
+      });
+    }
+
+    return contacts;
   }
 
   async createContact(data: Partial<Contact>): Promise<Contact> {
