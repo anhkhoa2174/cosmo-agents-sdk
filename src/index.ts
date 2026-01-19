@@ -16,6 +16,15 @@ export { OutreachAgent } from './agents/outreach-agent.js';
 export { AnalyticsAgent } from './agents/analytics-agent.js';
 export { EnrichmentAgent } from './agents/enrichment-agent.js';
 
+// Multi-agent orchestration
+export {
+  AgentOrchestrator,
+  type OrchestratorConfig,
+  type OrchestratorResult,
+  type AgentMessage,
+  type AgentType,
+} from './agents/orchestrator.js';
+
 // API client and types
 export {
   CosmoApiClient,

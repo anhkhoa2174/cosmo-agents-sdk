@@ -40,6 +40,32 @@ export interface Segment {
   is_active: boolean;
 }
 
+export interface Playbook {
+  id: string;
+  name: string;
+  description?: string;
+  stages?: PlaybookStage[];
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface PlaybookStage {
+  id: string;
+  name: string;
+  type: string;
+  delay_days?: number;
+  template_id?: string;
+}
+
+export interface Enrollment {
+  id: string;
+  contact_id: string;
+  playbook_id: string;
+  status: 'active' | 'paused' | 'completed' | 'cancelled';
+  current_stage_id?: string;
+  started_at: string;
+}
+
 export interface SegmentScore {
   segment_id: string;
   segment_name: string;
@@ -60,6 +86,22 @@ export interface RelationshipScore {
   health_score: number;
   interactions_30d: number;
   interactions_90d: number;
+}
+
+// ============ Workflow Types (Temporal) ============
+
+export interface WorkflowStartResponse {
+  workflow_id: string;
+  run_id: string;
+  status: string;
+}
+
+export interface WorkflowStatus {
+  workflow_id: string;
+  run_id: string;
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELED' | 'TERMINATED' | 'CONTINUED_AS_NEW' | 'TIMED_OUT';
+  result?: unknown;
+  error?: string;
 }
 
 // ============ Context Types ============
@@ -329,6 +371,56 @@ export class CosmoApiClient {
     return result.data;
   }
 
+  async createSegment(data: { name: string; description?: string; criteria?: Record<string, unknown> }): Promise<Segment> {
+    const result = await this.request<{ data: Segment }>(
+      'POST',
+      '/v1/segmentations',
+      data
+    );
+    return result.data;
+  }
+
+  async assignSegmentScore(
+    contactId: string,
+    segmentId: string,
+    fitScore: number,
+    status?: string
+  ): Promise<SegmentScore> {
+    const result = await this.request<{ data: SegmentScore }>(
+      'PUT',
+      `/v1/segmentations/${segmentId}/contacts/${contactId}/score`,
+      { fit_score: fitScore, status: status || 'active' }
+    );
+    return result.data;
+  }
+
+  // ============ Playbook Operations ============
+
+  async listPlaybooks(): Promise<Playbook[]> {
+    const result = await this.request<{ data: Playbook[] }>(
+      'GET',
+      '/v1/playbooks'
+    );
+    return result.data;
+  }
+
+  async getPlaybook(playbookId: string): Promise<Playbook> {
+    const result = await this.request<{ data: Playbook }>(
+      'GET',
+      `/v1/playbooks/${playbookId}`
+    );
+    return result.data;
+  }
+
+  async enrollContactInPlaybook(contactId: string, playbookId: string): Promise<{ message: string }> {
+    const result = await this.request<{ data: { message: string } }>(
+      'POST',
+      `/v1/contacts/${contactId}/enroll`,
+      { playbook_id: playbookId }
+    );
+    return result.data;
+  }
+
   // ============ Orchestration ============
 
   async triggerContactOrchestration(
@@ -406,5 +498,51 @@ export class CosmoApiClient {
 
   async clearConversationHistory(sessionId: string): Promise<void> {
     await this.request('DELETE', `/v1/context/history?session_id=${sessionId}`);
+  }
+
+  // ============ Workflow Operations (Temporal) ============
+
+  async startFullAnalysisWorkflow(contactId: string): Promise<WorkflowStartResponse> {
+    const result = await this.request<{ data: WorkflowStartResponse }>(
+      'POST',
+      '/v1/workflows/full-analysis',
+      { contact_id: contactId }
+    );
+    return result.data;
+  }
+
+  async startBatchEnrichmentWorkflow(contactIds: string[]): Promise<WorkflowStartResponse> {
+    const result = await this.request<{ data: WorkflowStartResponse }>(
+      'POST',
+      '/v1/workflows/batch-enrichment',
+      { contact_ids: contactIds }
+    );
+    return result.data;
+  }
+
+  async startSegmentAnalysisWorkflow(segmentId: string): Promise<WorkflowStartResponse> {
+    const result = await this.request<{ data: WorkflowStartResponse }>(
+      'POST',
+      '/v1/workflows/segment-analysis',
+      { segment_id: segmentId }
+    );
+    return result.data;
+  }
+
+  async startDailyAnalyticsWorkflow(): Promise<WorkflowStartResponse> {
+    const result = await this.request<{ data: WorkflowStartResponse }>(
+      'POST',
+      '/v1/workflows/daily-analytics',
+      {}
+    );
+    return result.data;
+  }
+
+  async getWorkflowStatus(workflowId: string): Promise<WorkflowStatus> {
+    const result = await this.request<{ data: WorkflowStatus }>(
+      'GET',
+      `/v1/workflows/${workflowId}/status`
+    );
+    return result.data;
   }
 }

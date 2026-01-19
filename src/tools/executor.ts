@@ -34,10 +34,24 @@ export class ToolExecutor {
           return await this.listSegments();
         case 'get_segment_contacts':
           return await this.getSegmentContacts(input);
+        case 'create_segment':
+          return await this.createSegment(input);
+        case 'assign_segment_score':
+          return await this.assignSegmentScore(input);
+        case 'list_playbooks':
+          return await this.listPlaybooks();
+        case 'get_playbook':
+          return await this.getPlaybook(input);
+        case 'enroll_contact_in_playbook':
+          return await this.enrollContactInPlaybook(input);
         case 'run_full_analysis':
           return await this.runFullAnalysis(input);
         case 'analyze_segment_health':
           return await this.analyzeSegmentHealth(input);
+        case 'start_workflow':
+          return await this.startWorkflow(input);
+        case 'get_workflow_status':
+          return await this.getWorkflowStatus(input);
         case 'count_contacts_created':
           return await this.countContactsCreated(input);
         default:
@@ -198,6 +212,87 @@ export class ToolExecutor {
         email: c.email,
         company: c.company,
       })),
+    });
+  }
+
+  private async createSegment(input: Record<string, unknown>): Promise<string> {
+    const segment = await this.client.createSegment({
+      name: input.name as string,
+      description: input.description as string | undefined,
+      criteria: input.criteria as Record<string, unknown> | undefined,
+    });
+
+    return JSON.stringify({
+      success: true,
+      segment_id: segment.id,
+      name: segment.name,
+      message: `Segment "${segment.name}" created successfully`,
+    });
+  }
+
+  private async assignSegmentScore(input: Record<string, unknown>): Promise<string> {
+    const score = await this.client.assignSegmentScore(
+      input.contact_id as string,
+      input.segment_id as string,
+      input.fit_score as number,
+      input.status as string | undefined
+    );
+
+    return JSON.stringify({
+      success: true,
+      contact_id: input.contact_id,
+      segment_id: score.segment_id,
+      fit_score: score.fit_score,
+      status: score.status,
+      message: `Contact assigned to segment with ${score.fit_score}% fit score`,
+    });
+  }
+
+  // ============ Playbook Methods ============
+
+  private async listPlaybooks(): Promise<string> {
+    const playbooks = await this.client.listPlaybooks();
+
+    return JSON.stringify({
+      count: playbooks.length,
+      playbooks: playbooks.map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        is_active: p.is_active,
+        stages_count: p.stages?.length || 0,
+      })),
+    });
+  }
+
+  private async getPlaybook(input: Record<string, unknown>): Promise<string> {
+    const playbook = await this.client.getPlaybook(input.playbook_id as string);
+
+    return JSON.stringify({
+      id: playbook.id,
+      name: playbook.name,
+      description: playbook.description,
+      is_active: playbook.is_active,
+      stages: playbook.stages?.map((s) => ({
+        id: s.id,
+        name: s.name,
+        type: s.type,
+        delay_days: s.delay_days,
+      })),
+    });
+  }
+
+  private async enrollContactInPlaybook(input: Record<string, unknown>): Promise<string> {
+    const result = await this.client.enrollContactInPlaybook(
+      input.contact_id as string,
+      input.playbook_id as string
+    );
+
+    return JSON.stringify({
+      success: true,
+      contact_id: input.contact_id,
+      playbook_id: input.playbook_id,
+      message: result.message || 'Contact enrolled in playbook successfully',
     });
   }
 
@@ -513,5 +608,73 @@ export class ToolExecutor {
     const dayOfWeek = tempDate.getUTCDay();
     const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Monday as start of week
     return new Date(dayStart.getTime() + diff * 24 * 60 * 60 * 1000);
+  }
+
+  // ============ Workflow Methods (Temporal) ============
+
+  private async startWorkflow(input: Record<string, unknown>): Promise<string> {
+    const workflowType = input.workflow_type as string;
+
+    let result;
+    switch (workflowType) {
+      case 'full_analysis': {
+        const contactId = input.contact_id as string;
+        if (!contactId) {
+          return JSON.stringify({ error: 'contact_id is required for full_analysis workflow' });
+        }
+        result = await this.client.startFullAnalysisWorkflow(contactId);
+        break;
+      }
+      case 'batch_enrichment': {
+        const contactIds = input.contact_ids as string[];
+        if (!contactIds || contactIds.length === 0) {
+          return JSON.stringify({ error: 'contact_ids array is required for batch_enrichment workflow' });
+        }
+        result = await this.client.startBatchEnrichmentWorkflow(contactIds);
+        break;
+      }
+      case 'segment_analysis': {
+        const segmentId = input.segment_id as string;
+        if (!segmentId) {
+          return JSON.stringify({ error: 'segment_id is required for segment_analysis workflow' });
+        }
+        result = await this.client.startSegmentAnalysisWorkflow(segmentId);
+        break;
+      }
+      case 'daily_analytics': {
+        result = await this.client.startDailyAnalyticsWorkflow();
+        break;
+      }
+      default:
+        return JSON.stringify({ error: `Unknown workflow type: ${workflowType}` });
+    }
+
+    return JSON.stringify({
+      success: true,
+      workflow_id: result.workflow_id,
+      run_id: result.run_id,
+      status: result.status,
+      message: `Workflow ${workflowType} started successfully. Use get_workflow_status to check progress.`,
+    });
+  }
+
+  private async getWorkflowStatus(input: Record<string, unknown>): Promise<string> {
+    const workflowId = input.workflow_id as string;
+    if (!workflowId) {
+      return JSON.stringify({ error: 'workflow_id is required' });
+    }
+
+    const status = await this.client.getWorkflowStatus(workflowId);
+
+    return JSON.stringify({
+      workflow_id: status.workflow_id,
+      run_id: status.run_id,
+      status: status.status,
+      result: status.result,
+      error: status.error,
+      is_running: status.status === 'RUNNING',
+      is_completed: status.status === 'COMPLETED',
+      is_failed: status.status === 'FAILED',
+    });
   }
 }

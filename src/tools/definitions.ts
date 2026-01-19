@@ -162,6 +162,103 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
       required: ['segment_id'],
     },
   },
+  {
+    name: 'create_segment',
+    description:
+      'Create a new segment to group contacts by criteria. Segments can be used for campaigns, targeting, and analytics.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Segment name (e.g., "Enterprise Tech Leaders", "High Intent Fintech")',
+        },
+        description: {
+          type: 'string',
+          description: 'Description of the segment criteria and purpose',
+        },
+        criteria: {
+          type: 'object',
+          description: 'Optional filter criteria for auto-matching contacts',
+        },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'assign_segment_score',
+    description:
+      'Assign or update a fit score for a contact in a segment. Use this to manually enroll contacts into segments or update their scores.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contact_id: {
+          type: 'string',
+          description: 'The contact ID',
+        },
+        segment_id: {
+          type: 'string',
+          description: 'The segment ID to assign to',
+        },
+        fit_score: {
+          type: 'number',
+          description: 'Fit score from 0-100 (higher = better match)',
+        },
+        status: {
+          type: 'string',
+          enum: ['active', 'pending', 'excluded'],
+          description: 'Status of the contact in this segment',
+        },
+      },
+      required: ['contact_id', 'segment_id', 'fit_score'],
+    },
+  },
+
+  // ============ Playbook Tools ============
+  {
+    name: 'list_playbooks',
+    description:
+      'List all playbooks in COSMO. Playbooks are automated sequences of actions for engaging contacts (emails, tasks, etc.).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_playbook',
+    description:
+      'Get details of a specific playbook including its stages and actions.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        playbook_id: {
+          type: 'string',
+          description: 'The playbook ID',
+        },
+      },
+      required: ['playbook_id'],
+    },
+  },
+  {
+    name: 'enroll_contact_in_playbook',
+    description:
+      'Enroll a contact in a playbook to start automated outreach. The playbook will execute its stages (emails, tasks) for this contact.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contact_id: {
+          type: 'string',
+          description: 'The contact ID to enroll',
+        },
+        playbook_id: {
+          type: 'string',
+          description: 'The playbook ID to enroll in',
+        },
+      },
+      required: ['contact_id', 'playbook_id'],
+    },
+  },
 
   // ============ Orchestration Tools ============
   {
@@ -194,6 +291,52 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
       required: ['segment_id'],
     },
   },
+  // ============ Workflow Tools (Temporal) ============
+  {
+    name: 'start_workflow',
+    description:
+      'Start a Temporal workflow for complex, long-running operations. Available workflows: full_analysis (comprehensive contact analysis), batch_enrichment (enrich multiple contacts), segment_analysis (analyze segment health), daily_analytics (run daily analytics report).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        workflow_type: {
+          type: 'string',
+          enum: ['full_analysis', 'batch_enrichment', 'segment_analysis', 'daily_analytics'],
+          description: 'Type of workflow to run',
+        },
+        contact_id: {
+          type: 'string',
+          description: 'Contact ID (required for full_analysis)',
+        },
+        contact_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of contact IDs (required for batch_enrichment)',
+        },
+        segment_id: {
+          type: 'string',
+          description: 'Segment ID (required for segment_analysis)',
+        },
+      },
+      required: ['workflow_type'],
+    },
+  },
+  {
+    name: 'get_workflow_status',
+    description:
+      'Check the status of a running Temporal workflow. Returns current status, progress, and result if completed.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        workflow_id: {
+          type: 'string',
+          description: 'The workflow ID returned from start_workflow',
+        },
+      },
+      required: ['workflow_id'],
+    },
+  },
+
   // ============ Analytics Tools ============
   {
     name: 'count_contacts_created',
@@ -232,6 +375,21 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
       required: [],
     },
   },
+  {
+    name: 'count_contacts_by_keyword',
+    description:
+      'Count contacts matching a keyword across common fields (company, job title, headline/about). Example: "fintech".',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        keyword: {
+          type: 'string',
+          description: 'Keyword to match (case-insensitive).',
+        },
+      },
+      required: ['keyword'],
+    },
+  },
 ];
 
 export type ToolName =
@@ -243,6 +401,14 @@ export type ToolName =
   | 'calculate_relationship_score'
   | 'list_segments'
   | 'get_segment_contacts'
+  | 'create_segment'
+  | 'assign_segment_score'
+  | 'list_playbooks'
+  | 'get_playbook'
+  | 'enroll_contact_in_playbook'
   | 'run_full_analysis'
   | 'analyze_segment_health'
-  | 'count_contacts_created';
+  | 'start_workflow'
+  | 'get_workflow_status'
+  | 'count_contacts_created'
+  | 'count_contacts_by_keyword';
