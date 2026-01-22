@@ -32,6 +32,9 @@ export {
   type Contact,
   type Segment,
   type SegmentScore,
+  type Playbook,
+  type PlaybookStage,
+  type Enrollment,
   type OrgContext,
   type UserContext,
   type MergedContext,
@@ -45,4 +48,20 @@ export {
 
 // Tools
 export { COSMO_TOOLS, type ToolName } from './tools/definitions.js';
-export { ToolExecutor } from './tools/executor.js';
+export { ToolExecutor, type ExecutorConfig } from './tools/executor.js';
+
+// MCP Integration (Apollo.io)
+export {
+  ApolloApiClient,
+  type ApolloConfig,
+  type PeopleSearchQuery,
+  type OrganizationSearchQuery,
+  type PeopleEnrichmentQuery,
+  type ApolloContact,
+} from './mcp/apollo-client.js';
+
+export {
+  MCPClientManager,
+  type MCPServerConfig,
+  type MCPClientConfig,
+} from './mcp/mcp-client.js';

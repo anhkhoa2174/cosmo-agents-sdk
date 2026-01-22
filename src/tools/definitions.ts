@@ -80,6 +80,28 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
     },
   },
 
+  {
+    name: 'import_contacts_csv',
+    description:
+      'Import contacts from CSV data. Supports field mapping to map CSV columns to contact fields. Standard fields: first_name, last_name, email, phone, company, job_title, address, city, country, state, zip. Non-standard fields are stored as custom fields in the profile.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        csv_content: {
+          type: 'string',
+          description: 'The CSV content as a string (with headers in first row)',
+        },
+        field_mapping: {
+          type: 'object',
+          description:
+            'Optional mapping of CSV column names to contact fields. Example: {"Company Name": "company", "Custom Field": "profile.custom_field"}',
+          additionalProperties: { type: 'string' },
+        },
+      },
+      required: ['csv_content'],
+    },
+  },
+
   // ============ Intelligence Tools ============
   {
     name: 'enrich_contact',
@@ -241,6 +263,47 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'create_playbook',
+    description:
+      'Create a new playbook with stages for automated outreach. Each stage can be email, linkedin, call, or wait. Use this to build multi-step engagement sequences.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Playbook name (e.g., "Enterprise Cold Outreach", "Fintech Nurture Sequence")',
+        },
+        description: {
+          type: 'string',
+          description: 'Description of the playbook purpose and target audience',
+        },
+        playbook_type: {
+          type: 'string',
+          enum: ['nurture', 'outreach', 're_engagement', 'upsell'],
+          description: 'Type of playbook: nurture (warm leads), outreach (cold), re_engagement (inactive), upsell (existing customers)',
+        },
+        stages: {
+          type: 'array',
+          description: 'Array of stages in the playbook',
+          items: {
+            type: 'object',
+            properties: {
+              order: { type: 'number', description: 'Stage order (1, 2, 3...)' },
+              name: { type: 'string', description: 'Stage name (e.g., "Initial Email", "Follow-up")' },
+              type: { type: 'string', enum: ['email', 'linkedin', 'call', 'wait'], description: 'Stage type' },
+              wait_days: { type: 'number', description: 'Days to wait before this stage (0 for immediate)' },
+              ai_prompt: { type: 'string', description: 'AI prompt for generating email content' },
+              on_reply: { type: 'string', enum: ['advance', 'complete', 'pause'], description: 'Action when contact replies' },
+              on_timeout: { type: 'string', enum: ['advance', 'complete', 'pause'], description: 'Action when no reply after wait' },
+            },
+            required: ['order', 'name', 'type'],
+          },
+        },
+      },
+      required: ['name', 'playbook_type', 'stages'],
+    },
+  },
+  {
     name: 'enroll_contact_in_playbook',
     description:
       'Enroll a contact in a playbook to start automated outreach. The playbook will execute its stages (emails, tasks) for this contact.',
@@ -257,6 +320,72 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ['contact_id', 'playbook_id'],
+    },
+  },
+
+  // ============ Automation Rule Tools ============
+  {
+    name: 'list_automation_rules',
+    description:
+      'List all automation rules. Automation rules auto-enroll contacts from a segment into a playbook based on fit score thresholds.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'create_automation_rule',
+    description:
+      'Create an automation rule to auto-enroll contacts from a segment into a playbook. Contacts with fit scores above the threshold will be enrolled automatically (or pending approval if require_human_approval is true).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Rule name (e.g., "High-fit Fintech to Outreach")',
+        },
+        segment_id: {
+          type: 'string',
+          description: 'Segment ID to watch for contacts',
+        },
+        playbook_id: {
+          type: 'string',
+          description: 'Playbook ID to enroll contacts into',
+        },
+        fit_score_threshold: {
+          type: 'number',
+          description: 'Minimum fit score (0-100) to trigger enrollment',
+        },
+        require_human_approval: {
+          type: 'boolean',
+          description: 'If true, contacts go to pending approval queue instead of auto-enrolling',
+        },
+      },
+      required: ['name', 'segment_id', 'playbook_id', 'fit_score_threshold'],
+    },
+  },
+  {
+    name: 'recommend_contacts_for_playbook',
+    description:
+      'Find contacts that are good candidates for a playbook based on segment fit scores. Returns contacts with high fit scores that are not yet enrolled.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        segment_id: {
+          type: 'string',
+          description: 'Segment ID to search in',
+        },
+        min_fit_score: {
+          type: 'number',
+          description: 'Minimum fit score threshold (default: 70)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum contacts to return (default: 10)',
+        },
+      },
+      required: ['segment_id'],
     },
   },
 
@@ -337,6 +466,147 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
     },
   },
 
+  // ============ Vector Search Tools ============
+  {
+    name: 'vector_search_contacts',
+    description:
+      'Search contacts using natural language semantic search. Example: "Find CTOs interested in AI and machine learning". This uses AI embeddings for intelligent matching beyond keyword search.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Natural language search query (e.g., "CTOs at fintech startups interested in automation")',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 10, max: 50)',
+        },
+        threshold: {
+          type: 'number',
+          description: 'Minimum similarity threshold 0-1 (default: 0.7)',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'find_similar_contacts',
+    description:
+      'Find contacts similar to a given contact. Use case: "Show me more contacts like this high-value customer".',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contact_id: {
+          type: 'string',
+          description: 'The contact ID to find similar contacts for',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 10)',
+        },
+        threshold: {
+          type: 'number',
+          description: 'Minimum similarity threshold 0-1 (default: 0.7)',
+        },
+      },
+      required: ['contact_id'],
+    },
+  },
+  {
+    name: 'search_knowledge',
+    description:
+      'Search the knowledge base using semantic similarity. Use for RAG (Retrieval Augmented Generation) to find relevant company info, product docs, case studies, etc.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Natural language query (e.g., "enterprise pricing strategies", "customer success stories")',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 5)',
+        },
+        threshold: {
+          type: 'number',
+          description: 'Minimum similarity threshold 0-1 (default: 0.6)',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'search_interactions',
+    description:
+      'Search interaction history (emails, meetings, calls) using semantic similarity. Find conversations about specific topics.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Natural language query (e.g., "discussions about contract renewal", "pricing negotiations")',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 20)',
+        },
+        threshold: {
+          type: 'number',
+          description: 'Minimum similarity threshold 0-1 (default: 0.7)',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'find_similar_segments',
+    description:
+      'Find segments that match a profile or query. Use case: "Which segments would this type of contact fit into?"',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Profile description or query (e.g., "VP of Engineering at SaaS companies")',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 5)',
+        },
+        threshold: {
+          type: 'number',
+          description: 'Minimum similarity threshold 0-1 (default: 0.6)',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'hybrid_search_contacts',
+    description:
+      'Combine keyword and semantic search for best results. Use when you need both exact keyword matches and semantic understanding.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Natural language query for semantic matching',
+        },
+        keywords: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Exact keywords to match (e.g., ["VP", "Engineering", "SaaS"])',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default: 20)',
+        },
+      },
+      required: ['query'],
+    },
+  },
+
   // ============ Analytics Tools ============
   {
     name: 'count_contacts_created',
@@ -390,12 +660,274 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
       required: ['keyword'],
     },
   },
+
+  // ============ Apollo.io Tools (External Data Source) ============
+  {
+    name: 'apollo_people_search',
+    description:
+      'Search for people/contacts using Apollo.io API. Find prospects by job titles, locations, industry, company details, and more. IMPORTANT: After getting results, immediately use import_apollo_contacts_to_cosmo to import them - do NOT call this search multiple times or try to enrich each contact individually.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        person_titles: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Job titles to search for (e.g., ["CEO", "CTO", "VP Engineering"])',
+        },
+        include_similar_titles: {
+          type: 'boolean',
+          description: 'Include similar job titles in results (default: true)',
+        },
+        q_keywords: {
+          type: 'string',
+          description: 'Keywords to filter results (e.g., industry keywords like "fintech", "healthcare", "saas")',
+        },
+        person_locations: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Locations where people live (e.g., ["california", "los angeles", "new york"])',
+        },
+        person_seniorities: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Seniority levels: owner, founder, c_suite, partner, vp, head, director, manager, senior, entry, intern',
+        },
+        organization_locations: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Company headquarters locations',
+        },
+        organization_industry_tag_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Industry tags to filter by (e.g., ["fintech", "financial services", "banking", "healthcare", "software"])',
+        },
+        q_organization_domains_list: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Company domains (e.g., ["google.com", "microsoft.com"])',
+        },
+        contact_email_status: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Email statuses: verified, unverified, likely to engage, unavailable',
+        },
+        organization_num_employees_ranges: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Employee count ranges (e.g., ["1,10", "50,100", "1000,5000"])',
+        },
+        page: {
+          type: 'number',
+          description: 'Page number for pagination',
+        },
+        per_page: {
+          type: 'number',
+          description: 'Results per page (default: 10, max: 25)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'apollo_organization_search',
+    description:
+      'Search for companies/organizations using Apollo.io API. Find companies by name, industry, size, location, funding, and more. NOTE: If user wants to find PEOPLE at companies, use apollo_people_search directly with company filters - do NOT search organizations first then search people.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        q_organization_name: {
+          type: 'string',
+          description: 'Company name to search for',
+        },
+        q_organization_domains_list: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Company domains to search',
+        },
+        organization_num_employees_ranges: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Employee count ranges (e.g., ["1,10", "50,100"])',
+        },
+        organization_locations: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Headquarters locations',
+        },
+        currently_using_any_of_technology_uids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Technologies the company uses (e.g., ["salesforce", "hubspot"])',
+        },
+        revenue_range_min: {
+          type: 'number',
+          description: 'Minimum revenue',
+        },
+        revenue_range_max: {
+          type: 'number',
+          description: 'Maximum revenue',
+        },
+        page: {
+          type: 'number',
+          description: 'Page number',
+        },
+        per_page: {
+          type: 'number',
+          description: 'Results per page',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'apollo_people_enrichment',
+    description:
+      'Enrich a SINGLE person data using Apollo.io. Only use this when user asks to enrich ONE specific person by email/name/LinkedIn. DO NOT use this in a loop for multiple contacts - apollo_people_search already returns enriched data.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        email: {
+          type: 'string',
+          description: 'Person email address',
+        },
+        first_name: {
+          type: 'string',
+          description: 'First name',
+        },
+        last_name: {
+          type: 'string',
+          description: 'Last name',
+        },
+        organization_name: {
+          type: 'string',
+          description: 'Company name',
+        },
+        domain: {
+          type: 'string',
+          description: 'Company domain',
+        },
+        linkedin_url: {
+          type: 'string',
+          description: 'LinkedIn profile URL',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'apollo_organization_enrichment',
+    description:
+      'Enrich a SINGLE company data using Apollo.io domain. Only use when user asks about ONE specific company. DO NOT use this for multiple companies.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        domain: {
+          type: 'string',
+          description: 'Company domain (e.g., "google.com")',
+        },
+      },
+      required: ['domain'],
+    },
+  },
+  {
+    name: 'apollo_employees_of_company',
+    description:
+      'Find employees of ONE specific company. Only use when user asks for people at a SINGLE named company (e.g., "find engineers at Google"). For broader searches (e.g., "find CTOs in fintech"), use apollo_people_search instead.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        company: {
+          type: 'string',
+          description: 'Company name (required)',
+        },
+        website_url: {
+          type: 'string',
+          description: 'Company website URL',
+        },
+        linkedin_url: {
+          type: 'string',
+          description: 'Company LinkedIn URL',
+        },
+        person_seniorities: {
+          type: 'string',
+          description: 'Comma-separated seniorities to filter (e.g., "c_suite,vp,director")',
+        },
+        contact_email_status: {
+          type: 'string',
+          description: 'Comma-separated email statuses (e.g., "verified,likely to engage")',
+        },
+      },
+      required: ['company'],
+    },
+  },
+  {
+    name: 'apollo_get_person_email',
+    description:
+      'Get email for ONE person using Apollo ID. Only use when user specifically asks for email of a single person. DO NOT use this in a loop - apollo_people_search already returns emails when available.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        apollo_id: {
+          type: 'string',
+          description: 'Apollo person ID',
+        },
+      },
+      required: ['apollo_id'],
+    },
+  },
+
+  // ============ Apollo to COSMO Import Tools ============
+  {
+    name: 'import_apollo_contacts_to_cosmo',
+    description:
+      'Import contacts from Apollo.io search results into COSMO CRM. Use this IMMEDIATELY after apollo_people_search - pass the search results directly without any additional enrichment or email lookups. This tool handles batch import efficiently.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        apollo_contacts: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              first_name: { type: 'string' },
+              last_name: { type: 'string' },
+              email: { type: 'string' },
+              title: { type: 'string' },
+              linkedin_url: { type: 'string' },
+              company: { type: 'string' },
+              phone: { type: 'string' },
+              city: { type: 'string' },
+              state: { type: 'string' },
+              country: { type: 'string' },
+            },
+          },
+          description: 'Array of contacts from Apollo search results',
+        },
+        tags: {
+          type: 'object',
+          additionalProperties: { type: 'string' },
+          description: 'Tags to apply to imported contacts (e.g., {"source": "apollo", "campaign": "q1_outreach"})',
+        },
+        segment_id: {
+          type: 'string',
+          description: 'Optional segment ID to assign contacts to',
+        },
+        playbook_id: {
+          type: 'string',
+          description: 'Optional playbook ID to enroll contacts in',
+        },
+      },
+      required: ['apollo_contacts'],
+    },
+  },
 ];
 
 export type ToolName =
   | 'search_contacts'
   | 'get_contact'
   | 'create_contact'
+  | 'import_contacts_csv'
   | 'enrich_contact'
   | 'calculate_segment_scores'
   | 'calculate_relationship_score'
@@ -405,10 +937,28 @@ export type ToolName =
   | 'assign_segment_score'
   | 'list_playbooks'
   | 'get_playbook'
+  | 'create_playbook'
   | 'enroll_contact_in_playbook'
+  | 'list_automation_rules'
+  | 'create_automation_rule'
+  | 'recommend_contacts_for_playbook'
   | 'run_full_analysis'
   | 'analyze_segment_health'
   | 'start_workflow'
   | 'get_workflow_status'
+  | 'vector_search_contacts'
+  | 'find_similar_contacts'
+  | 'search_knowledge'
+  | 'search_interactions'
+  | 'find_similar_segments'
+  | 'hybrid_search_contacts'
   | 'count_contacts_created'
-  | 'count_contacts_by_keyword';
+  | 'count_contacts_by_keyword'
+  // Apollo.io tools
+  | 'apollo_people_search'
+  | 'apollo_organization_search'
+  | 'apollo_people_enrichment'
+  | 'apollo_organization_enrichment'
+  | 'apollo_employees_of_company'
+  | 'apollo_get_person_email'
+  | 'import_apollo_contacts_to_cosmo';

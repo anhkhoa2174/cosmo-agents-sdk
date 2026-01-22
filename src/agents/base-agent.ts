@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 export interface BaseAgentConfig extends CosmoConfig {
   anthropicApiKey: string;
+  apolloApiKey?: string;
   model?: string;
   maxIterations?: number;
   sessionId?: string;
@@ -51,7 +52,9 @@ export abstract class BaseAgent {
       orgId: config.orgId,
     });
 
-    this.toolExecutor = new ToolExecutor(this.client);
+    this.toolExecutor = new ToolExecutor(this.client, {
+      apolloApiKey: config.apolloApiKey,
+    });
     this.model = config.model || 'claude-sonnet-4-20250514';
     this.maxIterations = config.maxIterations || 10;
     this.sessionId = config.sessionId || uuidv4();

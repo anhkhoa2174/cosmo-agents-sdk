@@ -3,13 +3,22 @@
  */
 
 import { CosmoApiClient } from './cosmo-api.js';
+import { ApolloApiClient } from '../mcp/apollo-client.js';
 import type { ToolName } from './definitions.js';
 
-export class ToolExecutor {
-  private client: CosmoApiClient;
+export interface ExecutorConfig {
+  apolloApiKey?: string;
+}
 
-  constructor(client: CosmoApiClient) {
+export class ToolExecutor {
+  readonly client: CosmoApiClient;
+  readonly apolloClient?: ApolloApiClient;
+
+  constructor(client: CosmoApiClient, config?: ExecutorConfig) {
     this.client = client;
+    if (config?.apolloApiKey) {
+      this.apolloClient = new ApolloApiClient({ apiKey: config.apolloApiKey });
+    }
   }
 
   async execute(
@@ -24,6 +33,8 @@ export class ToolExecutor {
           return await this.getContact(input);
         case 'create_contact':
           return await this.createContact(input);
+        case 'import_contacts_csv':
+          return await this.importContactsCSV(input);
         case 'enrich_contact':
           return await this.enrichContact(input);
         case 'calculate_segment_scores':
@@ -42,8 +53,16 @@ export class ToolExecutor {
           return await this.listPlaybooks();
         case 'get_playbook':
           return await this.getPlaybook(input);
+        case 'create_playbook':
+          return await this.createPlaybook(input);
         case 'enroll_contact_in_playbook':
           return await this.enrollContactInPlaybook(input);
+        case 'list_automation_rules':
+          return await this.listAutomationRules();
+        case 'create_automation_rule':
+          return await this.createAutomationRule(input);
+        case 'recommend_contacts_for_playbook':
+          return await this.recommendContactsForPlaybook(input);
         case 'run_full_analysis':
           return await this.runFullAnalysis(input);
         case 'analyze_segment_health':
@@ -54,6 +73,33 @@ export class ToolExecutor {
           return await this.getWorkflowStatus(input);
         case 'count_contacts_created':
           return await this.countContactsCreated(input);
+        case 'vector_search_contacts':
+          return await this.vectorSearchContacts(input);
+        case 'find_similar_contacts':
+          return await this.findSimilarContacts(input);
+        case 'search_knowledge':
+          return await this.searchKnowledge(input);
+        case 'search_interactions':
+          return await this.searchInteractions(input);
+        case 'find_similar_segments':
+          return await this.findSimilarSegments(input);
+        case 'hybrid_search_contacts':
+          return await this.hybridSearchContacts(input);
+        // Apollo.io tools
+        case 'apollo_people_search':
+          return await this.apolloPeopleSearch(input);
+        case 'apollo_organization_search':
+          return await this.apolloOrganizationSearch(input);
+        case 'apollo_people_enrichment':
+          return await this.apolloPeopleEnrichment(input);
+        case 'apollo_organization_enrichment':
+          return await this.apolloOrganizationEnrichment(input);
+        case 'apollo_employees_of_company':
+          return await this.apolloEmployeesOfCompany(input);
+        case 'apollo_get_person_email':
+          return await this.apolloGetPersonEmail(input);
+        case 'import_apollo_contacts_to_cosmo':
+          return await this.importApolloContactsToCosmo(input);
         default:
           return JSON.stringify({ error: `Unknown tool: ${toolName}` });
       }
@@ -64,11 +110,27 @@ export class ToolExecutor {
   }
 
   private async searchContacts(input: Record<string, unknown>): Promise<string> {
-    const contacts = await this.client.listContacts({
-      search: input.query as string,
-      segment_id: input.segment_id as string | undefined,
-      limit: (input.limit as number) || 10,
-    });
+    const filter: Record<string, unknown> = {
+      company: input.query as string,
+      job_title: input.query as string,
+      email: input.query as string,
+      first_name: input.query as string,
+      last_name: input.query as string,
+      $or: [
+        { company: input.query as string },
+        { job_title: input.query as string },
+        { email: input.query as string },
+        { first_name: input.query as string },
+        { last_name: input.query as string },
+      ],
+    };
+
+    if (input.segment_id) {
+      filter.segment_id = input.segment_id as string;
+    }
+
+    const result = await this.client.searchContacts(filter, 0, (input.limit as number) || 10);
+    const contacts = result.list;
 
     return JSON.stringify({
       count: contacts.length,
@@ -127,6 +189,21 @@ export class ToolExecutor {
       message: result.insights_generated
         ? 'AI insights generated successfully'
         : 'Contact already has insights (use force_refresh to regenerate)',
+    });
+  }
+
+  private async importContactsCSV(input: Record<string, unknown>): Promise<string> {
+    const result = await this.client.importContactsFromCSV(
+      input.csv_content as string,
+      input.field_mapping as Record<string, string> | undefined
+    );
+
+    return JSON.stringify({
+      success: true,
+      message: result.message,
+      total_rows: result.total_rows,
+      imported_rows: result.imported_rows,
+      skipped_rows: result.skipped_rows,
     });
   }
 
@@ -259,26 +336,35 @@ export class ToolExecutor {
         id: p.id,
         name: p.name,
         description: p.description,
+        playbook_type: p.playbook_type,
         is_active: p.is_active,
-        stages_count: p.stages?.length || 0,
+        stages_count: p.config?.stages?.length || 0,
+        performance: p.performance,
       })),
     });
   }
 
   private async getPlaybook(input: Record<string, unknown>): Promise<string> {
     const playbook = await this.client.getPlaybook(input.playbook_id as string);
+    const stages = playbook.config?.stages || [];
 
     return JSON.stringify({
       id: playbook.id,
       name: playbook.name,
       description: playbook.description,
+      playbook_type: playbook.playbook_type,
       is_active: playbook.is_active,
-      stages: playbook.stages?.map((s) => ({
+      stages: stages.map((s) => ({
         id: s.id,
+        order: s.order,
         name: s.name,
         type: s.type,
-        delay_days: s.delay_days,
+        wait_days: s.trigger_conditions?.wait_duration || 0,
+        ai_prompt: s.content_config?.ai_generation_prompt,
+        on_reply: s.success_criteria?.on_reply,
+        on_timeout: s.success_criteria?.on_timeout,
       })),
+      performance: playbook.performance,
     });
   }
 
@@ -294,6 +380,151 @@ export class ToolExecutor {
       playbook_id: input.playbook_id,
       message: result.message || 'Contact enrolled in playbook successfully',
     });
+  }
+
+  private async createPlaybook(input: Record<string, unknown>): Promise<string> {
+    const stages = (input.stages as Array<Record<string, unknown>>).map((s, i) => ({
+      id: `stage_${i + 1}`,
+      order: (s.order as number) || i + 1,
+      name: s.name as string,
+      type: s.type as string,
+      trigger_conditions: {
+        wait_duration: (s.wait_days as number) || 0,
+      },
+      content_config: s.ai_prompt ? {
+        ai_generation_prompt: s.ai_prompt as string,
+      } : undefined,
+      success_criteria: {
+        on_reply: (s.on_reply as string) || 'complete',
+        on_timeout: (s.on_timeout as string) || 'advance',
+      },
+    }));
+
+    const playbook = await this.client.createPlaybook({
+      name: input.name as string,
+      description: input.description as string | undefined,
+      playbook_type: input.playbook_type as 'nurture' | 'outreach' | 're_engagement' | 'upsell',
+      stages: stages as any,
+    });
+
+    return JSON.stringify({
+      success: true,
+      playbook_id: playbook.id,
+      name: playbook.name,
+      stages_count: stages.length,
+      message: `Playbook "${playbook.name}" created with ${stages.length} stages`,
+    });
+  }
+
+  private async listAutomationRules(): Promise<string> {
+    const rules = await this.client.listAutomationRules();
+
+    return JSON.stringify({
+      count: rules.length,
+      rules: rules.map((r) => ({
+        id: r.id,
+        name: r.name,
+        segment_name: r.segment_name,
+        playbook_name: r.playbook_name,
+        fit_score_threshold: r.enrollment_criteria.fit_score_threshold,
+        require_approval: r.enrollment_criteria.require_human_approval,
+        is_active: r.is_active,
+        stats: r.stats,
+      })),
+    });
+  }
+
+  private async createAutomationRule(input: Record<string, unknown>): Promise<string> {
+    const rule = await this.client.createAutomationRule({
+      name: input.name as string,
+      segment_id: input.segment_id as string,
+      playbook_id: input.playbook_id as string,
+      enrollment_criteria: {
+        fit_score_threshold: input.fit_score_threshold as number,
+        require_human_approval: (input.require_human_approval as boolean) ?? true,
+      },
+      is_active: true,
+    });
+
+    return JSON.stringify({
+      success: true,
+      rule_id: rule.id,
+      name: rule.name,
+      message: `Automation rule "${rule.name}" created. Contacts with fit score >= ${input.fit_score_threshold}% will be ${input.require_human_approval ? 'queued for approval' : 'auto-enrolled'}.`,
+    });
+  }
+
+  private async recommendContactsForPlaybook(input: Record<string, unknown>): Promise<string> {
+    const segmentId = input.segment_id as string;
+    const minFitScore = (input.min_fit_score as number) || 70;
+    const limit = (input.limit as number) || 10;
+
+    // Get segment contacts
+    const contacts = await this.client.getSegmentContacts(segmentId);
+
+    // Filter by fit score - we need to get scores for each contact
+    const recommendations: Array<{
+      contact_id: string;
+      name: string;
+      email: string;
+      company?: string;
+      fit_score: number;
+      reason: string;
+    }> = [];
+
+    for (const contact of contacts.slice(0, limit * 2)) {
+      try {
+        const scores = await this.client.calculateSegmentScores(contact.id, [segmentId]);
+        const segmentScore = scores.find((s) => s.segment_id === segmentId);
+
+        if (segmentScore && segmentScore.fit_score >= minFitScore && !segmentScore.enrolled_in_campaign) {
+          recommendations.push({
+            contact_id: contact.id,
+            name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.email,
+            email: contact.email,
+            company: contact.company,
+            fit_score: segmentScore.fit_score,
+            reason: this.generateRecommendationReason(contact, segmentScore.fit_score),
+          });
+
+          if (recommendations.length >= limit) break;
+        }
+      } catch {
+        // Skip contacts that fail scoring
+      }
+    }
+
+    return JSON.stringify({
+      segment_id: segmentId,
+      min_fit_score: minFitScore,
+      recommendations_count: recommendations.length,
+      recommendations: recommendations.sort((a, b) => b.fit_score - a.fit_score),
+      message: recommendations.length > 0
+        ? `Found ${recommendations.length} contacts with fit score >= ${minFitScore}%`
+        : `No contacts found with fit score >= ${minFitScore}%`,
+    });
+  }
+
+  private generateRecommendationReason(contact: { ai_insights?: any; company?: string; title?: string }, fitScore: number): string {
+    const reasons: string[] = [];
+
+    if (fitScore >= 90) {
+      reasons.push('Excellent segment fit');
+    } else if (fitScore >= 80) {
+      reasons.push('Strong segment fit');
+    } else {
+      reasons.push('Good segment fit');
+    }
+
+    if (contact.ai_insights?.buying_signals?.length > 0) {
+      reasons.push('has buying signals');
+    }
+
+    if (contact.ai_insights?.suspected_pain_points?.length > 0) {
+      reasons.push('identified pain points');
+    }
+
+    return reasons.join(', ');
   }
 
   private async runFullAnalysis(
@@ -587,8 +818,8 @@ export class ToolExecutor {
     let offsetMinutes = 0;
     if (match) {
       const sign = match[1] === '+' ? 1 : -1;
-      const hours = parseInt(match[2], 10);
-      const minutes = parseInt(match[3] || '0', 10);
+      const hours = Number.parseInt(match[2], 10);
+      const minutes = Number.parseInt(match[3] || '0', 10);
       offsetMinutes = sign * (hours * 60 + minutes);
     }
 
@@ -675,6 +906,358 @@ export class ToolExecutor {
       is_running: status.status === 'RUNNING',
       is_completed: status.status === 'COMPLETED',
       is_failed: status.status === 'FAILED',
+    });
+  }
+
+  // ============ Vector Search Methods ============
+
+  private async vectorSearchContacts(input: Record<string, unknown>): Promise<string> {
+    const query = input.query as string;
+    const limit = (input.limit as number) || 10;
+    const threshold = (input.threshold as number) || 0.7;
+
+    const result = await this.client.vectorSearchContacts(query, limit, threshold);
+
+    return JSON.stringify({
+      query: result.query,
+      count: result.count,
+      contacts: result.results.map((r) => ({
+        contact_id: r.contact_id,
+        name: `${r.first_name || ''} ${r.last_name || ''}`.trim() || r.email,
+        email: r.email,
+        company: r.company,
+        job_title: r.job_title,
+        similarity: Math.round(r.similarity * 100) / 100,
+      })),
+    });
+  }
+
+  private async findSimilarContacts(input: Record<string, unknown>): Promise<string> {
+    const contactId = input.contact_id as string;
+    const limit = (input.limit as number) || 10;
+    const threshold = (input.threshold as number) || 0.7;
+
+    const result = await this.client.findSimilarContacts(contactId, limit, threshold);
+
+    return JSON.stringify({
+      source_contact_id: contactId,
+      query: result.query,
+      count: result.count,
+      similar_contacts: result.results.map((r) => ({
+        contact_id: r.contact_id,
+        name: `${r.first_name || ''} ${r.last_name || ''}`.trim() || r.email,
+        email: r.email,
+        company: r.company,
+        job_title: r.job_title,
+        similarity: Math.round(r.similarity * 100) / 100,
+      })),
+    });
+  }
+
+  private async searchKnowledge(input: Record<string, unknown>): Promise<string> {
+    const query = input.query as string;
+    const limit = (input.limit as number) || 5;
+    const threshold = (input.threshold as number) || 0.6;
+
+    const result = await this.client.searchKnowledge(query, limit, threshold);
+
+    return JSON.stringify({
+      query: result.query,
+      count: result.count,
+      results: result.results.map((r) => ({
+        knowledge_id: r.knowledge_id,
+        chunk_index: r.chunk_index,
+        content: r.chunk_text,
+        similarity: Math.round(r.similarity * 100) / 100,
+      })),
+    });
+  }
+
+  private async searchInteractions(input: Record<string, unknown>): Promise<string> {
+    const query = input.query as string;
+    const limit = (input.limit as number) || 20;
+    const threshold = (input.threshold as number) || 0.7;
+
+    const result = await this.client.searchInteractions(query, limit, threshold);
+
+    return JSON.stringify({
+      query: result.query,
+      count: result.count,
+      interactions: result.results.map((r) => ({
+        interaction_id: r.interaction_id,
+        contact_id: r.contact_id,
+        type: r.interaction_type,
+        preview: r.content_preview,
+        similarity: Math.round(r.similarity * 100) / 100,
+      })),
+    });
+  }
+
+  private async findSimilarSegments(input: Record<string, unknown>): Promise<string> {
+    const query = input.query as string;
+    const limit = (input.limit as number) || 5;
+    const threshold = (input.threshold as number) || 0.6;
+
+    const result = await this.client.findSimilarSegments(query, limit, threshold);
+
+    return JSON.stringify({
+      query: result.query,
+      count: result.count,
+      segments: result.results.map((r) => ({
+        segment_id: r.segment_id,
+        name: r.segment_name,
+        contact_count: r.contact_count,
+        avg_fit_score: r.avg_fit_score,
+        similarity: Math.round(r.similarity * 100) / 100,
+      })),
+    });
+  }
+
+  private async hybridSearchContacts(input: Record<string, unknown>): Promise<string> {
+    const query = input.query as string;
+    const keywords = (input.keywords as string[]) || [];
+    const limit = (input.limit as number) || 20;
+
+    const result = await this.client.hybridSearchContacts(query, keywords, limit);
+
+    return JSON.stringify({
+      query: result.query,
+      keywords: keywords,
+      count: result.count,
+      contacts: result.results.map((r) => ({
+        contact_id: r.contact_id,
+        name: `${r.first_name || ''} ${r.last_name || ''}`.trim() || r.email,
+        email: r.email,
+        company: r.company,
+        keyword_score: Math.round(r.keyword_score * 100) / 100,
+        semantic_score: Math.round(r.semantic_score * 100) / 100,
+        combined_score: Math.round(r.combined_score * 100) / 100,
+      })),
+    });
+  }
+
+  // ============ Apollo.io Methods ============
+
+  private ensureApolloClient(): ApolloApiClient {
+    if (!this.apolloClient) {
+      throw new Error('Apollo API key not configured. Set APOLLO_IO_API_KEY environment variable or pass apolloApiKey in config.');
+    }
+    return this.apolloClient;
+  }
+
+  private async apolloPeopleSearch(input: Record<string, unknown>): Promise<string> {
+    const apollo = this.ensureApolloClient();
+    const result = await apollo.peopleSearch({
+      person_titles: input.person_titles as string[] | undefined,
+      include_similar_titles: input.include_similar_titles as boolean | undefined,
+      q_keywords: input.q_keywords as string | undefined,
+      person_locations: input.person_locations as string[] | undefined,
+      person_seniorities: input.person_seniorities as string[] | undefined,
+      organization_locations: input.organization_locations as string[] | undefined,
+      q_organization_domains_list: input.q_organization_domains_list as string[] | undefined,
+      contact_email_status: input.contact_email_status as string[] | undefined,
+      organization_num_employees_ranges: input.organization_num_employees_ranges as string[] | undefined,
+      page: input.page as number | undefined,
+      per_page: input.per_page as number | undefined,
+    });
+
+    return JSON.stringify({
+      count: result.people.length,
+      pagination: result.pagination,
+      people: result.people.map((p) => ({
+        id: p.id,
+        name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+        first_name: p.first_name,
+        last_name: p.last_name,
+        email: p.email,
+        title: p.title,
+        linkedin_url: p.linkedin_url,
+        city: p.city,
+        state: p.state,
+        country: p.country,
+        company: p.organization?.name,
+        company_website: p.organization?.website_url,
+        company_industry: p.organization?.industry,
+        company_size: p.organization?.estimated_num_employees,
+      })),
+    });
+  }
+
+  private async apolloOrganizationSearch(input: Record<string, unknown>): Promise<string> {
+    const apollo = this.ensureApolloClient();
+    const result = await apollo.organizationSearch({
+      q_organization_name: input.q_organization_name as string | undefined,
+      q_organization_domains_list: input.q_organization_domains_list as string[] | undefined,
+      organization_num_employees_ranges: input.organization_num_employees_ranges as string[] | undefined,
+      organization_locations: input.organization_locations as string[] | undefined,
+      currently_using_any_of_technology_uids: input.currently_using_any_of_technology_uids as string[] | undefined,
+      revenue_range_min: input.revenue_range_min as number | undefined,
+      revenue_range_max: input.revenue_range_max as number | undefined,
+      page: input.page as number | undefined,
+      per_page: input.per_page as number | undefined,
+    });
+
+    return JSON.stringify({
+      count: result.organizations.length,
+      pagination: result.pagination,
+      organizations: result.organizations,
+    });
+  }
+
+  private async apolloPeopleEnrichment(input: Record<string, unknown>): Promise<string> {
+    const apollo = this.ensureApolloClient();
+    const result = await apollo.peopleEnrichment({
+      email: input.email as string | undefined,
+      first_name: input.first_name as string | undefined,
+      last_name: input.last_name as string | undefined,
+      organization_name: input.organization_name as string | undefined,
+      domain: input.domain as string | undefined,
+      linkedin_url: input.linkedin_url as string | undefined,
+    });
+
+    return JSON.stringify({
+      success: !!result?.person,
+      person: result?.person,
+    });
+  }
+
+  private async apolloOrganizationEnrichment(input: Record<string, unknown>): Promise<string> {
+    const apollo = this.ensureApolloClient();
+    const domain = input.domain as string;
+    const result = await apollo.organizationEnrichment(domain);
+
+    return JSON.stringify({
+      success: !!result?.organization,
+      organization: result?.organization,
+    });
+  }
+
+  private async apolloEmployeesOfCompany(input: Record<string, unknown>): Promise<string> {
+    const apollo = this.ensureApolloClient();
+    const result = await apollo.employeesOfCompany({
+      company: input.company as string,
+      website_url: input.website_url as string | undefined,
+      linkedin_url: input.linkedin_url as string | undefined,
+      person_seniorities: input.person_seniorities as string | undefined,
+      contact_email_status: input.contact_email_status as string | undefined,
+    });
+
+    return JSON.stringify({
+      count: result.people.length,
+      pagination: result.pagination,
+      employees: result.people.map((p) => ({
+        id: p.id,
+        name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+        first_name: p.first_name,
+        last_name: p.last_name,
+        email: p.email,
+        title: p.title,
+        linkedin_url: p.linkedin_url,
+      })),
+    });
+  }
+
+  private async apolloGetPersonEmail(input: Record<string, unknown>): Promise<string> {
+    const apollo = this.ensureApolloClient();
+    const apolloId = input.apollo_id as string;
+    const emails = await apollo.getPersonEmail(apolloId);
+
+    return JSON.stringify({
+      apollo_id: apolloId,
+      emails: emails,
+      primary_email: emails[0] || null,
+    });
+  }
+
+  private async importApolloContactsToCosmo(input: Record<string, unknown>): Promise<string> {
+    const apolloContacts = input.apollo_contacts as Array<{
+      first_name?: string;
+      last_name?: string;
+      email?: string;
+      title?: string;
+      linkedin_url?: string;
+      company?: string;
+      phone?: string;
+      city?: string;
+      state?: string;
+      country?: string;
+    }>;
+    // Note: tags would be handled by backend if needed
+    const segmentId = input.segment_id as string | undefined;
+    const playbookId = input.playbook_id as string | undefined;
+
+    const results: Array<{
+      email: string;
+      success: boolean;
+      contact_id?: string;
+      error?: string;
+    }> = [];
+
+    for (const apolloContact of apolloContacts) {
+      if (!apolloContact.email) {
+        results.push({
+          email: 'unknown',
+          success: false,
+          error: 'No email provided',
+        });
+        continue;
+      }
+
+      try {
+        // Create contact in COSMO
+        // Note: tags are passed separately to backend, not in the contact object
+        const contact = await this.client.createContact({
+          email: apolloContact.email,
+          first_name: apolloContact.first_name,
+          last_name: apolloContact.last_name,
+          company: apolloContact.company,
+          title: apolloContact.title,
+          linkedin_url: apolloContact.linkedin_url,
+        } as any); // Using 'as any' to allow additional fields that backend may accept
+
+        // Assign to segment if provided
+        if (segmentId && contact.id) {
+          try {
+            await this.client.assignSegmentScore(contact.id, segmentId, 80, 'active');
+          } catch {
+            // Continue even if segment assignment fails
+          }
+        }
+
+        // Enroll in playbook if provided
+        if (playbookId && contact.id) {
+          try {
+            await this.client.enrollContactInPlaybook(contact.id, playbookId);
+          } catch {
+            // Continue even if playbook enrollment fails
+          }
+        }
+
+        results.push({
+          email: apolloContact.email,
+          success: true,
+          contact_id: contact.id,
+        });
+      } catch (error) {
+        results.push({
+          email: apolloContact.email,
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+
+    const successCount = results.filter((r) => r.success).length;
+    const failedCount = results.filter((r) => !r.success).length;
+
+    return JSON.stringify({
+      total: apolloContacts.length,
+      imported: successCount,
+      failed: failedCount,
+      segment_id: segmentId,
+      playbook_id: playbookId,
+      results: results,
+      message: `Imported ${successCount} contacts from Apollo to COSMO${segmentId ? `, assigned to segment` : ''}${playbookId ? `, enrolled in playbook` : ''}`,
     });
   }
 }

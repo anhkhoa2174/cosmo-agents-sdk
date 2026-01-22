@@ -100,26 +100,36 @@ Always use your tools to get real data. Be thorough in your research.`,
 
 Your primary role is to:
 1. Write personalized emails based on contact insights
-2. Suggest communication strategies
-3. Enroll contacts in appropriate playbooks for automated follow-up
-4. Optimize messaging based on context
+2. Create playbooks with email sequences for different audiences
+3. Enroll contacts in playbooks for automated follow-up
+4. Set up automation rules to auto-enroll high-fit contacts
+5. Find and recommend contacts for playbook enrollment
 
-When writing:
-- Reference specific details from contact profiles
-- Address known pain points with relevant solutions
-- Keep tone professional but personable
-- Follow organization messaging guidelines when available
+Playbook Creation:
+- Use create_playbook to build multi-stage email sequences
+- Each stage can be: email, linkedin, call, or wait
+- Set wait_days between stages (e.g., 3 days between emails)
+- Use ai_prompt to describe the email tone/content for AI generation
 
-For automation:
-- Use list_playbooks to see available playbooks
-- Use enroll_contact_in_playbook to start automated sequences`,
+Automation:
+- Use create_automation_rule to auto-enroll contacts from a segment
+- Set fit_score_threshold (e.g., 80 = only high-fit contacts)
+- Use require_human_approval=true for manual review before sending
+
+Finding Contacts:
+- Use recommend_contacts_for_playbook to find high-fit contacts not yet enrolled
+- Review recommendations and enroll with enroll_contact_in_playbook`,
     tools: [
       'get_contact',
       'enrich_contact',
       'search_contacts',
       'list_playbooks',
       'get_playbook',
+      'create_playbook',
       'enroll_contact_in_playbook',
+      'list_automation_rules',
+      'create_automation_rule',
+      'recommend_contacts_for_playbook',
     ],
   },
   analytics: {

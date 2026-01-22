@@ -44,17 +44,82 @@ export interface Playbook {
   id: string;
   name: string;
   description?: string;
-  stages?: PlaybookStage[];
+  playbook_type?: PlaybookType;
+  config?: PlaybookConfig;
+  performance?: PlaybookPerformance;
   is_active: boolean;
   created_at?: string;
 }
 
+export type PlaybookType = 'nurture' | 'outreach' | 're_engagement' | 'upsell';
+export type StageType = 'email' | 'linkedin' | 'call' | 'wait' | 'conditional';
+export type SuccessAction = 'advance' | 'complete' | 'next_stage' | 'pause';
+
 export interface PlaybookStage {
+  id?: string;
+  order: number;
+  name: string;
+  type: StageType;
+  trigger_conditions: {
+    wait_duration: number; // days
+    wait_for_event?: string;
+  };
+  content_config?: {
+    template?: string;
+    ai_generation_prompt?: string;
+  };
+  success_criteria: {
+    on_reply: SuccessAction;
+    on_timeout: SuccessAction;
+  };
+}
+
+export interface PlaybookConfig {
+  stages: PlaybookStage[];
+  messaging_strategy?: Record<string, unknown>;
+  timing_rules?: Record<string, unknown>;
+  channel_sequence?: string[];
+}
+
+export interface PlaybookPerformance {
+  contacts_enrolled: number;
+  total_sent: number;
+  total_replies: number;
+  total_meetings: number;
+  reply_rate: number;
+  meeting_rate: number;
+}
+
+export interface CreatePlaybookRequest {
+  name: string;
+  description?: string;
+  playbook_type: PlaybookType;
+  stages: PlaybookStage[];
+}
+
+export interface AutomationRule {
   id: string;
   name: string;
-  type: string;
-  delay_days?: number;
-  template_id?: string;
+  segment_id: string;
+  segment_name?: string;
+  playbook_id: string;
+  playbook_name?: string;
+  enrollment_criteria: EnrollmentCriteria;
+  is_active: boolean;
+  stats?: AutomationStats;
+}
+
+export interface EnrollmentCriteria {
+  fit_score_threshold: number;
+  engagement_score_threshold?: number;
+  require_human_approval: boolean;
+}
+
+export interface AutomationStats {
+  contacts_enrolled: number;
+  contacts_pending_approval: number;
+  contacts_in_progress: number;
+  contacts_completed: number;
 }
 
 export interface Enrollment {
@@ -203,8 +268,87 @@ export interface ContactSearchResponse<T = Contact> {
   limit: number;
 }
 
+// ============ Vector Search Types ============
+
+export interface VectorSearchContactsResponse {
+  results: ContactSearchResult[];
+  query: string;
+  count: number;
+}
+
+export interface ContactSearchResult {
+  contact_id: string;
+  similarity: number;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  company?: string;
+  job_title?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface SearchKnowledgeResponse {
+  results: KnowledgeSearchResult[];
+  query: string;
+  count: number;
+}
+
+export interface KnowledgeSearchResult {
+  knowledge_id: string;
+  chunk_index: number;
+  chunk_text: string;
+  similarity: number;
+}
+
+export interface SearchInteractionsResponse {
+  results: InteractionSearchResult[];
+  query: string;
+  count: number;
+}
+
+export interface InteractionSearchResult {
+  interaction_id: string;
+  contact_id?: string;
+  interaction_type?: string;
+  similarity: number;
+  content_preview?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface FindSimilarSegmentsResponse {
+  results: SegmentSearchResult[];
+  query: string;
+  count: number;
+}
+
+export interface SegmentSearchResult {
+  segment_id: string;
+  segment_name: string;
+  similarity: number;
+  contact_count?: number;
+  avg_fit_score?: number;
+}
+
+export interface HybridSearchResponse {
+  results: HybridSearchResult[];
+  query: string;
+  count: number;
+}
+
+export interface HybridSearchResult {
+  contact_id: string;
+  keyword_score: number;
+  semantic_score: number;
+  combined_score: number;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  company?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export class CosmoApiClient {
-  private config: CosmoConfig;
+  readonly config: CosmoConfig;
 
   constructor(config: CosmoConfig) {
     this.config = config;
@@ -241,7 +385,7 @@ export class CosmoApiClient {
   async getContact(contactId: string): Promise<Contact> {
     const result = await this.request<{ data: Contact }>(
       'GET',
-      `/v1/contacts/${contactId}`
+      `/v1/contact/${contactId}`
     );
     return result.data;
   }
@@ -333,6 +477,55 @@ export class CosmoApiClient {
     return result.total;
   }
 
+  /**
+   * Import contacts from CSV file
+   * @param csvContent - CSV content as string
+   * @param fieldMapping - Optional mapping of CSV columns to contact fields.
+   *                       Standard fields: first_name, last_name, email, phone, company, job_title, address, city, country, state, zip
+   *                       Non-standard fields will be stored in profile (custom fields).
+   *                       Example: { "Company Name": "company", "Custom Field": "profile.custom_field" }
+   * @returns Import result with counts
+   */
+  async importContactsFromCSV(
+    csvContent: string,
+    fieldMapping?: Record<string, string>
+  ): Promise<{ message: string; total_rows: number; imported_rows: number; skipped_rows: number }> {
+    const formData = new FormData();
+
+    // Create a Blob from the CSV content
+    const csvBlob = new Blob([csvContent], { type: 'text/csv' });
+    formData.append('csv_file', csvBlob, 'import.csv');
+
+    // Add field mapping if provided
+    if (fieldMapping) {
+      formData.append('field_mapping', JSON.stringify(fieldMapping));
+    }
+
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${this.config.apiKey}`,
+    };
+    if (this.config.userId) {
+      headers['X-User-ID'] = this.config.userId;
+    }
+    if (this.config.orgId) {
+      headers['X-Org-ID'] = this.config.orgId;
+    }
+
+    const response = await fetch(`${this.config.baseUrl}/v1/contacts/import-csv`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to import CSV: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    return result.data;
+  }
+
   // ============ Intelligence Operations ============
 
   async enrichContact(
@@ -353,7 +546,7 @@ export class CosmoApiClient {
   ): Promise<SegmentScore[]> {
     const result = await this.request<{ data: { scores: SegmentScore[] } }>(
       'POST',
-      `/v1/intelligence/contacts/${contactId}/segment-scores`,
+      `/v1/intelligence/contacts/${contactId}/scores`,
       { segment_ids: segmentIds }
     );
     return result.data.scores;
@@ -387,12 +580,12 @@ export class CosmoApiClient {
     return result.data;
   }
 
-  async getSegmentContacts(segmentId: string): Promise<Contact[]> {
-    const result = await this.request<{ data: Contact[] }>(
+  async getSegmentContacts(segmentId: string, limit = 100): Promise<Contact[]> {
+    const result = await this.request<{ data: { contacts: Contact[]; total: number } }>(
       'GET',
-      `/v1/segmentations/${segmentId}/contacts`
+      `/v1/segmentations/${segmentId}/contacts?limit=${limit}`
     );
-    return result.data;
+    return result.data.contacts;
   }
 
   async createSegment(data: { name: string; description?: string; criteria?: Record<string, unknown> }): Promise<Segment> {
@@ -441,6 +634,48 @@ export class CosmoApiClient {
       'POST',
       `/v1/contacts/${contactId}/enroll`,
       { playbook_id: playbookId }
+    );
+    return result.data;
+  }
+
+  async createPlaybook(data: CreatePlaybookRequest): Promise<Playbook> {
+    const result = await this.request<{ data: Playbook }>(
+      'POST',
+      '/v1/playbooks',
+      data
+    );
+    return result.data;
+  }
+
+  // ============ Automation Rule Operations ============
+
+  async listAutomationRules(): Promise<AutomationRule[]> {
+    const result = await this.request<{ data: AutomationRule[] }>(
+      'GET',
+      '/v1/automation-rules'
+    );
+    return result.data;
+  }
+
+  async createAutomationRule(data: {
+    name: string;
+    segment_id: string;
+    playbook_id: string;
+    enrollment_criteria: EnrollmentCriteria;
+    is_active?: boolean;
+  }): Promise<AutomationRule> {
+    const result = await this.request<{ data: AutomationRule }>(
+      'POST',
+      '/v1/automation-rules',
+      data
+    );
+    return result.data;
+  }
+
+  async toggleAutomationRule(ruleId: string): Promise<AutomationRule> {
+    const result = await this.request<{ data: AutomationRule }>(
+      'PATCH',
+      `/v1/automation-rules/${ruleId}/toggle`
     );
     return result.data;
   }
@@ -566,6 +801,62 @@ export class CosmoApiClient {
     const result = await this.request<{ data: WorkflowStatus }>(
       'GET',
       `/v1/workflows/${workflowId}/status`
+    );
+    return result.data;
+  }
+
+  // ============ Vector Search Operations ============
+
+  async vectorSearchContacts(query: string, limit = 10, threshold = 1): Promise<VectorSearchContactsResponse> {
+    const result = await this.request<{ data: VectorSearchContactsResponse }>(
+      'POST',
+      '/v1/intelligence/vector-search/contacts',
+      { query, limit, threshold }
+    );
+    return result.data;
+  }
+
+  async findSimilarContacts(contactId: string, limit = 10, threshold = 1): Promise<VectorSearchContactsResponse> {
+    const result = await this.request<{ data: VectorSearchContactsResponse }>(
+      'POST',
+      '/v1/intelligence/vector-search/similar',
+      { contact_id: contactId, limit, threshold }
+    );
+    return result.data;
+  }
+
+  async searchKnowledge(query: string, limit = 5, threshold = 1): Promise<SearchKnowledgeResponse> {
+    const result = await this.request<{ data: SearchKnowledgeResponse }>(
+      'POST',
+      '/v1/intelligence/vector-search/knowledge',
+      { query, limit, threshold }
+    );
+    return result.data;
+  }
+
+  async searchInteractions(query: string, limit = 20, threshold = 0.7): Promise<SearchInteractionsResponse> {
+    const result = await this.request<{ data: SearchInteractionsResponse }>(
+      'POST',
+      '/v1/intelligence/vector-search/interactions',
+      { query, limit, threshold }
+    );
+    return result.data;
+  }
+
+  async findSimilarSegments(query: string, limit = 5, threshold = 0.6): Promise<FindSimilarSegmentsResponse> {
+    const result = await this.request<{ data: FindSimilarSegmentsResponse }>(
+      'POST',
+      '/v1/intelligence/vector-search/segments',
+      { query, limit, threshold }
+    );
+    return result.data;
+  }
+
+  async hybridSearchContacts(query: string, keywords: string[] = [], limit = 20): Promise<HybridSearchResponse> {
+    const result = await this.request<{ data: HybridSearchResponse }>(
+      'POST',
+      '/v1/intelligence/vector-search/hybrid',
+      { query, keywords, limit }
     );
     return result.data;
   }

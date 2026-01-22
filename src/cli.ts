@@ -283,11 +283,16 @@ async function startChat(model: string, agentType: AgentType = 'cosmo', sessionI
   // Validate environment
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const cosmoBaseUrl = process.env.COSMO_BASE_URL || 'http://localhost:8081';
+  const apolloApiKey = process.env.APOLLO_IO_API_KEY;
 
   if (!anthropicKey) {
     console.log(chalk.red('Error: ANTHROPIC_API_KEY not set'));
     console.log(chalk.gray('Set it in .env file or environment variable'));
     process.exit(1);
+  }
+
+  if (apolloApiKey) {
+    console.log(chalk.green('✓ Apollo.io API key configured'));
   }
 
   // Get token (from env, cache, or login)
@@ -304,6 +309,7 @@ async function startChat(model: string, agentType: AgentType = 'cosmo', sessionI
   // Initialize agent
   const config: BaseAgentConfig = {
     anthropicApiKey: anthropicKey,
+    apolloApiKey: apolloApiKey,
     apiKey: cosmoApiKey,
     baseUrl: cosmoBaseUrl,
     model,
@@ -404,12 +410,43 @@ async function startChat(model: string, agentType: AgentType = 'cosmo', sessionI
   };
 
   // Start prompting
-  console.log(chalk.cyan('COSMO: ') + 'Hello! I\'m COSMO, your AI-powered CRM assistant. I can help you:');
-  console.log('  • Search and analyze contacts');
-  console.log('  • Generate AI insights (pain points, goals, buying signals)');
-  console.log('  • Calculate segment fit scores');
-  console.log('  • Analyze relationship health');
-  console.log('\nWhat would you like to do?');
+  console.log(chalk.cyan('COSMO: ') + 'Hello! I\'m COSMO, your AI-powered CRM assistant.\n');
+  console.log(chalk.bold('📇 Contact Management'));
+  console.log('  • Search contacts - "Find contacts named John"');
+  console.log('  • Create contact - "Create new contact: john@example.com"');
+  console.log('  • View details - "Show me contact ABC-123"');
+
+  console.log(chalk.bold('\n🧠 AI Intelligence'));
+  console.log('  • Enrich contact - "Analyze and enrich this contact"');
+  console.log('  • Pain points & goals - "What are this contact\'s pain points?"');
+  console.log('  • Buying signals - "Any buying signals for this contact?"');
+  console.log('  • Relationship score - "How strong is our relationship?"');
+
+  console.log(chalk.bold('\n🔍 Smart Search (AI-powered)'));
+  console.log('  • Semantic search - "Find CTOs interested in AI"');
+  console.log('  • Similar contacts - "Find contacts similar to John"');
+  console.log('  • Search knowledge - "Find case studies about fintech"');
+  console.log('  • Search interactions - "Find emails about pricing"');
+
+  console.log(chalk.bold('\n📊 Segments & Scoring'));
+  console.log('  • List segments - "Show all segments"');
+  console.log('  • Create segment - "Create segment Enterprise Fintech"');
+  console.log('  • Calculate fit score - "Which segment fits this contact?"');
+  console.log('  • Segment health - "Analyze health of segment X"');
+
+  console.log(chalk.bold('\n📧 Playbooks & Automation'));
+  console.log('  • List playbooks - "Show available playbooks"');
+  console.log('  • Create playbook - "Create nurture playbook for startups"');
+  console.log('  • Enroll contact - "Add John to Welcome playbook"');
+  console.log('  • Recommend contacts - "Suggest contacts for playbook X"');
+  console.log('  • Automation rules - "Create auto-enroll rule for segment"');
+
+  console.log(chalk.bold('\n📈 Analytics'));
+  console.log('  • Count contacts - "How many contacts added today?"');
+  console.log('  • Count by keyword - "How many contacts in Fintech?"');
+
+  console.log('\n' + chalk.gray('Type /help for commands, /exit to quit.\n'));
+  console.log('What would you like to do?');
 
   prompt();
 }

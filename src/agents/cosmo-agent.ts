@@ -16,6 +16,7 @@ import { ToolExecutor } from '../tools/executor.js';
 
 export interface AgentConfig extends CosmoConfig {
   anthropicApiKey: string;
+  apolloApiKey?: string;
   model?: string;
   maxIterations?: number;
 }
@@ -34,6 +35,7 @@ Your capabilities:
 4. **Relationship Analysis**: Analyze engagement history and relationship health
 5. **Full Analysis**: Run comprehensive analysis pipelines on contacts
 6. **Contact Analytics**: Report how many contacts were added in a given day or month
+7. **Apollo.io Integration**: Search for external prospects and import them into COSMO
 
 When helping users:
 - Be proactive in suggesting relevant analyses
@@ -43,20 +45,29 @@ When helping users:
 - When showing scores, explain what they mean
 - For analytics questions about counts by date, use the contact analytics tool with a preset (today, yesterday, this_week, last_week, this_month, last_month) whenever possible
 
+IMPORTANT - Apollo.io Search Workflow:
+When user asks to find prospects from Apollo and import to COSMO:
+1. Use apollo_people_search ONCE with all filters (title, location, industry via q_keywords)
+2. Immediately use import_apollo_contacts_to_cosmo with the search results
+3. DO NOT call apollo_people_enrichment or apollo_get_person_email for each contact - this wastes API calls
+4. DO NOT retry search with different parameters unless the first search returns 0 results
+5. If search returns fewer results than requested, import what you have - don't keep searching
+
 Examples of how to help:
 - "Let me search for that contact and show you their profile"
 - "I'll run a full analysis to give you the complete picture"
 - "This contact has a 85% fit score for your Enterprise segment - they're a strong match"
 - "The relationship score is low (25%) - I'd recommend scheduling a touchpoint"
 - "You added 42 contacts on 2025-01-15"
+- "I found 5 CTOs in Fintech from Apollo. Let me import them to COSMO now."
 
 Always use the available tools to get real data. Never make up information about contacts.`;
 
 export class CosmoAgent {
-  private anthropic: Anthropic;
-  private toolExecutor: ToolExecutor;
-  private model: string;
-  private maxIterations: number;
+  private readonly anthropic: Anthropic;
+  private readonly toolExecutor: ToolExecutor;
+  private readonly model: string;
+  private readonly maxIterations: number;
   private conversationHistory: Anthropic.MessageParam[] = [];
 
   constructor(config: AgentConfig) {
@@ -71,7 +82,9 @@ export class CosmoAgent {
       orgId: config.orgId,
     });
 
-    this.toolExecutor = new ToolExecutor(apiClient);
+    this.toolExecutor = new ToolExecutor(apiClient, {
+      apolloApiKey: config.apolloApiKey,
+    });
     this.model = config.model || 'claude-sonnet-4-20250514';
     this.maxIterations = config.maxIterations || 10;
   }
@@ -173,10 +186,10 @@ export class CosmoAgent {
    */
   getHistory(): ConversationMessage[] {
     return this.conversationHistory
-      .filter((msg) => typeof msg.content === 'string')
+      .filter((msg): msg is Anthropic.MessageParam & { content: string } => typeof msg.content === 'string')
       .map((msg) => ({
-        role: msg.role as 'user' | 'assistant',
-        content: msg.content as string,
+        role: msg.role,
+        content: msg.content,
       }));
   }
 }
