@@ -10,13 +10,37 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
   {
     name: 'search_contacts',
     description:
-      'Search for contacts in COSMO CRM. Use this to find contacts by name, email, company, or other attributes.',
+      'Search for contacts in COSMO CRM. Use this to find contacts by name, email, company, city, country, industry, or other attributes. You can use query for text search OR use specific filters.',
     input_schema: {
       type: 'object' as const,
       properties: {
         query: {
           type: 'string',
-          description: 'Search query (name, email, company)',
+          description: 'Text search query (searches name, email, company, job_title)',
+        },
+        city: {
+          type: 'string',
+          description: 'Filter by city (e.g., "Ho Chi Minh", "Ha Noi", "Da Nang")',
+        },
+        country: {
+          type: 'string',
+          description: 'Filter by country (e.g., "Vietnam", "Singapore")',
+        },
+        industry: {
+          type: 'string',
+          description: 'Filter by industry (e.g., "Fintech", "SaaS", "Healthcare")',
+        },
+        contact_channel: {
+          type: 'string',
+          description: 'Filter by contact channel (e.g., "LinkedIn", "Email")',
+        },
+        lifecycle_stage: {
+          type: 'string',
+          description: 'Filter by lifecycle stage (new, contacted, replied, qualified, proposal, won, lost)',
+        },
+        status: {
+          type: 'string',
+          description: 'Filter by status (ready, pending)',
         },
         segment_id: {
           type: 'string',
@@ -27,7 +51,7 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
           description: 'Maximum number of results (default: 10)',
         },
       },
-      required: ['query'],
+      required: [],
     },
   },
   {
@@ -99,6 +123,27 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ['csv_content'],
+    },
+  },
+  {
+    name: 'import_csv_from_file',
+    description:
+      'Import contacts from a CSV file path. Reads the file and imports contacts into COSMO. Use this when user provides a file path instead of CSV content directly.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        file_path: {
+          type: 'string',
+          description: 'The absolute path to the CSV file (e.g., /path/to/contacts.csv)',
+        },
+        field_mapping: {
+          type: 'object',
+          description:
+            'Optional mapping of CSV column names to contact fields. Example: {"Company Name": "company"}',
+          additionalProperties: { type: 'string' },
+        },
+      },
+      required: ['file_path'],
     },
   },
 
@@ -928,6 +973,7 @@ export type ToolName =
   | 'get_contact'
   | 'create_contact'
   | 'import_contacts_csv'
+  | 'import_csv_from_file'
   | 'enrich_contact'
   | 'calculate_segment_scores'
   | 'calculate_relationship_score'

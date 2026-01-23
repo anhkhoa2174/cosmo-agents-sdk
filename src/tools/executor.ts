@@ -2,6 +2,7 @@
  * Tool Executor - Handles execution of COSMO tools
  */
 
+import * as fs from 'fs';
 import { CosmoApiClient } from './cosmo-api.js';
 import { ApolloApiClient } from '../mcp/apollo-client.js';
 import type { ToolName } from './definitions.js';
@@ -35,6 +36,8 @@ export class ToolExecutor {
           return await this.createContact(input);
         case 'import_contacts_csv':
           return await this.importContactsCSV(input);
+        case 'import_csv_from_file':
+          return await this.importCSVFromFile(input);
         case 'enrich_contact':
           return await this.enrichContact(input);
         case 'calculate_segment_scores':
@@ -110,21 +113,40 @@ export class ToolExecutor {
   }
 
   private async searchContacts(input: Record<string, unknown>): Promise<string> {
-    const filter: Record<string, unknown> = {
-      company: input.query as string,
-      job_title: input.query as string,
-      email: input.query as string,
-      first_name: input.query as string,
-      last_name: input.query as string,
-      $or: [
-        { company: input.query as string },
-        { job_title: input.query as string },
-        { email: input.query as string },
-        { first_name: input.query as string },
-        { last_name: input.query as string },
-      ],
-    };
+    const filter: Record<string, unknown> = {};
 
+    // Text search query (searches multiple fields with OR)
+    if (input.query) {
+      const query = input.query as string;
+      filter.$or = [
+        { company: query },
+        { job_title: query },
+        { email: query },
+        { first_name: query },
+        { last_name: query },
+        { city: query },
+      ];
+    }
+
+    // Specific filters (exact match)
+    if (input.city) {
+      filter.city = input.city as string;
+    }
+    if (input.country) {
+      filter.country = input.country as string;
+    }
+    if (input.industry) {
+      filter.industry = input.industry as string;
+    }
+    if (input.contact_channel) {
+      filter.contact_channel = input.contact_channel as string;
+    }
+    if (input.lifecycle_stage) {
+      filter.lifecycle_stage = input.lifecycle_stage as string;
+    }
+    if (input.status) {
+      filter.status = input.status as string;
+    }
     if (input.segment_id) {
       filter.segment_id = input.segment_id as string;
     }
@@ -134,13 +156,22 @@ export class ToolExecutor {
 
     return JSON.stringify({
       count: contacts.length,
-      contacts: contacts.map((c) => ({
-        id: c.id,
-        name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.email,
-        email: c.email,
-        company: c.company,
-        title: c.title,
-      })),
+      contacts: contacts.map((item) => {
+        const c = item.entity;
+        return {
+          id: c.id,
+          name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.email,
+          email: c.email,
+          company: c.company,
+          title: c.title,
+          city: c.city,
+          country: c.country,
+          industry: c.industry,
+          contact_channel: c.contact_channel,
+          lifecycle_stage: c.lifecycle_stage,
+          status: c.status,
+        };
+      }),
     });
   }
 
@@ -200,6 +231,36 @@ export class ToolExecutor {
 
     return JSON.stringify({
       success: true,
+      message: result.message,
+      total_rows: result.total_rows,
+      imported_rows: result.imported_rows,
+      skipped_rows: result.skipped_rows,
+    });
+  }
+
+  private async importCSVFromFile(input: Record<string, unknown>): Promise<string> {
+    const filePath = input.file_path as string;
+
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return JSON.stringify({
+        success: false,
+        error: `File not found: ${filePath}`,
+      });
+    }
+
+    // Read file content
+    const csvContent = fs.readFileSync(filePath, 'utf-8');
+
+    // Import using existing method
+    const result = await this.client.importContactsFromCSV(
+      csvContent,
+      input.field_mapping as Record<string, string> | undefined
+    );
+
+    return JSON.stringify({
+      success: true,
+      file_path: filePath,
       message: result.message,
       total_rows: result.total_rows,
       imported_rows: result.imported_rows,

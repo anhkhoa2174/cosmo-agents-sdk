@@ -17,7 +17,28 @@ export interface Contact {
   last_name?: string;
   company?: string;
   title?: string;
+  job_title?: string;
   linkedin_url?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  country?: string;
+  state?: string;
+  zip?: string;
+  // Outreach context fields
+  industry?: string;
+  contact_channel?: string;
+  lifecycle_stage?: string;
+  context_level?: string;
+  outreach_decision?: string;
+  scenario?: string;
+  message_draft?: string;
+  last_outcome?: string;
+  next_step?: string;
+  meeting?: string;
+  // Status fields
+  status?: string;
+  missing_fields?: string[];
   created_at?: string;
   ai_insights?: {
     suspected_pain_points?: Array<{ pain_point: string; evidence?: string }>;
