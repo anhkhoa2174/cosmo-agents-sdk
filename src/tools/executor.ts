@@ -3,7 +3,7 @@
  */
 
 import * as fs from 'fs';
-import { CosmoApiClient } from './cosmo-api.js';
+import { CosmoApiClient, MeetingStatus } from './cosmo-api.js';
 import { ApolloApiClient } from '../mcp/apollo-client.js';
 import type { ToolName } from './definitions.js';
 
@@ -103,6 +103,32 @@ export class ToolExecutor {
           return await this.apolloGetPersonEmail(input);
         case 'import_apollo_contacts_to_cosmo':
           return await this.importApolloContactsToCosmo(input);
+        // Outreach tools (Phase 2)
+        case 'suggest_outreach':
+          return await this.suggestOutreach(input);
+        case 'generate_outreach_draft':
+          return await this.generateOutreachDraft(input);
+        case 'update_outreach':
+          return await this.updateOutreach(input);
+        case 'get_outreach_state':
+          return await this.getOutreachState(input);
+        case 'get_interaction_history':
+          return await this.getInteractionHistory(input);
+        case 'create_meeting':
+          return await this.createMeeting(input);
+        case 'update_meeting':
+          return await this.updateMeeting(input);
+        case 'get_meetings':
+          return await this.getMeetings(input);
+        // Notes tools (Team Conversation)
+        case 'add_note':
+          return await this.addNote(input);
+        case 'get_notes':
+          return await this.getNotes(input);
+        case 'update_note':
+          return await this.updateNote(input);
+        case 'delete_note':
+          return await this.deleteNote(input);
         default:
           return JSON.stringify({ error: `Unknown tool: ${toolName}` });
       }
@@ -122,8 +148,7 @@ export class ToolExecutor {
         { company: query },
         { job_title: query },
         { email: query },
-        { first_name: query },
-        { last_name: query },
+        { name: query },
         { city: query },
       ];
     }
@@ -160,7 +185,7 @@ export class ToolExecutor {
         const c = item.entity;
         return {
           id: c.id,
-          name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.email,
+          name: c.name || c.email,
           email: c.email,
           company: c.company,
           title: c.title,
@@ -180,7 +205,7 @@ export class ToolExecutor {
 
     return JSON.stringify({
       id: contact.id,
-      name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
+      name: contact.name,
       email: contact.email,
       company: contact.company,
       title: contact.title,
@@ -193,8 +218,7 @@ export class ToolExecutor {
   private async createContact(input: Record<string, unknown>): Promise<string> {
     const contact = await this.client.createContact({
       email: input.email as string,
-      first_name: input.first_name as string | undefined,
-      last_name: input.last_name as string | undefined,
+      name: input.name as string | undefined,
       company: input.company as string | undefined,
       title: input.title as string | undefined,
       linkedin_url: input.linkedin_url as string | undefined,
@@ -346,7 +370,7 @@ export class ToolExecutor {
       contact_count: contacts.length,
       contacts: contacts.slice(0, 20).map((c) => ({
         id: c.id,
-        name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.email,
+        name: c.name || c.email,
         email: c.email,
         company: c.company,
       })),
@@ -541,7 +565,7 @@ export class ToolExecutor {
         if (segmentScore && segmentScore.fit_score >= minFitScore && !segmentScore.enrolled_in_campaign) {
           recommendations.push({
             contact_id: contact.id,
-            name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.email,
+            name: contact.name || contact.email,
             email: contact.email,
             company: contact.company,
             fit_score: segmentScore.fit_score,
@@ -984,7 +1008,7 @@ export class ToolExecutor {
       count: result.count,
       contacts: result.results.map((r) => ({
         contact_id: r.contact_id,
-        name: `${r.first_name || ''} ${r.last_name || ''}`.trim() || r.email,
+        name: r.name || r.email,
         email: r.email,
         company: r.company,
         job_title: r.job_title,
@@ -1006,7 +1030,7 @@ export class ToolExecutor {
       count: result.count,
       similar_contacts: result.results.map((r) => ({
         contact_id: r.contact_id,
-        name: `${r.first_name || ''} ${r.last_name || ''}`.trim() || r.email,
+        name: r.name || r.email,
         email: r.email,
         company: r.company,
         job_title: r.job_title,
@@ -1087,7 +1111,7 @@ export class ToolExecutor {
       count: result.count,
       contacts: result.results.map((r) => ({
         contact_id: r.contact_id,
-        name: `${r.first_name || ''} ${r.last_name || ''}`.trim() || r.email,
+        name: r.name || r.email,
         email: r.email,
         company: r.company,
         keyword_score: Math.round(r.keyword_score * 100) / 100,
@@ -1267,14 +1291,15 @@ export class ToolExecutor {
       try {
         // Create contact in COSMO
         // Note: tags are passed separately to backend, not in the contact object
+        // Combine Apollo's first_name and last_name into COSMO's name field
+        const name = `${apolloContact.first_name || ''} ${apolloContact.last_name || ''}`.trim();
         const contact = await this.client.createContact({
           email: apolloContact.email,
-          first_name: apolloContact.first_name,
-          last_name: apolloContact.last_name,
+          name: name || undefined,
           company: apolloContact.company,
           title: apolloContact.title,
           linkedin_url: apolloContact.linkedin_url,
-        } as any); // Using 'as any' to allow additional fields that backend may accept
+        });
 
         // Assign to segment if provided
         if (segmentId && contact.id) {
@@ -1319,6 +1344,248 @@ export class ToolExecutor {
       playbook_id: playbookId,
       results: results,
       message: `Imported ${successCount} contacts from Apollo to COSMO${segmentId ? `, assigned to segment` : ''}${playbookId ? `, enrolled in playbook` : ''}`,
+    });
+  }
+
+  // ============ Outreach Methods (Phase 2) ============
+
+  private async suggestOutreach(input: Record<string, unknown>): Promise<string> {
+    const type = input.type as 'cold' | 'followup' | 'mixed';
+    const limit = (input.limit as number) || 50;
+
+    const result = await this.client.suggestOutreach(type, limit);
+
+    return JSON.stringify({
+      type,
+      count: result.length,
+      suggestions: result.map((s: any) => ({
+        contact_id: s.contact?.id,
+        name: s.contact?.name || 'Unknown',
+        company: s.contact?.company,
+        title: s.contact?.job_title,
+        type: s.type,
+        state: s.state?.conversation_state,
+        next_step: s.next_step,
+        days_since: s.days_since,
+        message_draft: s.message_draft,
+      })),
+    });
+  }
+
+  private async generateOutreachDraft(input: Record<string, unknown>): Promise<string> {
+    const contactId = input.contact_id as string;
+
+    const result = await this.client.generateOutreachDraft(contactId);
+
+    return JSON.stringify({
+      contact_id: contactId,
+      draft: result.draft,
+      state: result.state,
+      scenario: result.scenario,
+    });
+  }
+
+  private async updateOutreach(input: Record<string, unknown>): Promise<string> {
+    const contactId = input.contact_id as string;
+    const event = input.event as string;
+    const content = input.content as string | undefined;
+    const channel = (input.channel as string) || 'LinkedIn';
+    const sentiment = input.sentiment as string | undefined;
+
+    await this.client.updateOutreach({
+      contact_id: contactId,
+      event,
+      content,
+      channel,
+      sentiment,
+    });
+
+    return JSON.stringify({
+      success: true,
+      contact_id: contactId,
+      event,
+      message: `Outreach updated: ${event}`,
+    });
+  }
+
+  private async getOutreachState(input: Record<string, unknown>): Promise<string> {
+    const contactId = input.contact_id as string;
+
+    const result = await this.client.getOutreachState(contactId);
+
+    return JSON.stringify({
+      contact_id: contactId,
+      conversation_state: result.conversation_state,
+      context_level: result.context_level,
+      outreach_intent: result.outreach_intent,
+      scenario: result.scenario,
+      last_outcome: result.last_outcome,
+      next_step: result.next_step,
+      days_since_last_interaction: result.days_since_last_interaction,
+      followup_count: result.followup_count,
+      message_draft: result.message_draft,
+    });
+  }
+
+  private async getInteractionHistory(input: Record<string, unknown>): Promise<string> {
+    const contactId = input.contact_id as string;
+    const limit = (input.limit as number) || 10;
+
+    const result = await this.client.getInteractionHistory(contactId, limit);
+
+    return JSON.stringify({
+      contact_id: contactId,
+      count: result.length,
+      interactions: result.map((i: any) => ({
+        id: i.id,
+        channel: i.channel,
+        direction: i.direction,
+        content: i.content,
+        sentiment: i.sentiment,
+        timestamp: i.timestamp,
+      })),
+    });
+  }
+
+  private async createMeeting(input: Record<string, unknown>): Promise<string> {
+    const contactId = input.contact_id as string;
+    const time = input.time as string;
+    const title = input.title as string | undefined;
+    const durationMinutes = (input.duration_minutes as number) || 30;
+    const channel = (input.channel as string) || 'Zoom';
+    const meetingUrl = input.meeting_url as string | undefined;
+    const note = input.note as string | undefined;
+
+    const result = await this.client.createMeeting({
+      contact_id: contactId,
+      time,
+      title,
+      duration_minutes: durationMinutes,
+      channel,
+      meeting_url: meetingUrl,
+      note,
+    });
+
+    return JSON.stringify({
+      success: true,
+      meeting_id: result.id,
+      contact_id: contactId,
+      time: result.time,
+      channel: result.channel,
+      status: result.status,
+      message: `Meeting scheduled for ${time}`,
+    });
+  }
+
+  private async updateMeeting(input: Record<string, unknown>): Promise<string> {
+    const meetingId = input.meeting_id as string;
+    const status = input.status as MeetingStatus | undefined;
+    const note = input.note as string | undefined;
+    const outcome = input.outcome as string | undefined;
+    const nextSteps = input.next_steps as string | undefined;
+
+    const result = await this.client.updateMeeting({
+      meeting_id: meetingId,
+      status,
+      note,
+      outcome,
+      next_steps: nextSteps,
+    });
+
+    return JSON.stringify({
+      success: true,
+      meeting_id: meetingId,
+      status: result.status,
+      message: `Meeting updated to ${status}`,
+    });
+  }
+
+  private async getMeetings(input: Record<string, unknown>): Promise<string> {
+    const contactId = input.contact_id as string;
+
+    const result = await this.client.getMeetings(contactId);
+
+    return JSON.stringify({
+      contact_id: contactId,
+      count: result.length,
+      meetings: result.map((m: any) => ({
+        id: m.id,
+        title: m.title,
+        time: m.time,
+        duration_minutes: m.duration_minutes,
+        channel: m.channel,
+        status: m.status,
+        note: m.note,
+        outcome: m.outcome,
+        next_steps: m.next_steps,
+      })),
+    });
+  }
+
+  // ============ Notes Tools ============
+
+  private async addNote(input: Record<string, unknown>): Promise<string> {
+    const contactId = input.contact_id as string;
+    const content = input.content as string;
+
+    const result = await this.client.addNote(contactId, content);
+
+    return JSON.stringify({
+      message: 'Note added successfully',
+      note: {
+        id: result.id,
+        contact_id: result.contact_id,
+        content: result.content,
+        timestamp: result.timestamp,
+      },
+    });
+  }
+
+  private async getNotes(input: Record<string, unknown>): Promise<string> {
+    const contactId = input.contact_id as string;
+    const limit = (input.limit as number) || 50;
+
+    const result = await this.client.getNotes(contactId, limit);
+
+    return JSON.stringify({
+      contact_id: contactId,
+      count: result.length,
+      notes: result.map((n: any) => ({
+        id: n.id,
+        content: n.content,
+        timestamp: n.timestamp,
+        created_at: n.created_at,
+      })),
+    });
+  }
+
+  private async updateNote(input: Record<string, unknown>): Promise<string> {
+    const contactId = input.contact_id as string;
+    const noteId = input.note_id as string;
+    const content = input.content as string;
+
+    const result = await this.client.updateNote(contactId, noteId, content);
+
+    return JSON.stringify({
+      message: 'Note updated successfully',
+      note: {
+        id: result.id,
+        content: result.content,
+        timestamp: result.timestamp,
+      },
+    });
+  }
+
+  private async deleteNote(input: Record<string, unknown>): Promise<string> {
+    const contactId = input.contact_id as string;
+    const noteId = input.note_id as string;
+
+    await this.client.deleteNote(contactId, noteId);
+
+    return JSON.stringify({
+      message: 'Note deleted successfully',
+      contact_id: contactId,
+      note_id: noteId,
     });
   }
 }

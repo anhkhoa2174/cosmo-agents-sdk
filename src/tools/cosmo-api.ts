@@ -13,8 +13,7 @@ export interface CosmoConfig {
 export interface Contact {
   id: string;
   email: string;
-  first_name?: string;
-  last_name?: string;
+  name?: string;
   company?: string;
   title?: string;
   job_title?: string;
@@ -300,8 +299,7 @@ export interface VectorSearchContactsResponse {
 export interface ContactSearchResult {
   contact_id: string;
   similarity: number;
-  first_name?: string;
-  last_name?: string;
+  name?: string;
   email?: string;
   company?: string;
   job_title?: string;
@@ -361,11 +359,126 @@ export interface HybridSearchResult {
   keyword_score: number;
   semantic_score: number;
   combined_score: number;
-  first_name?: string;
-  last_name?: string;
+  name?: string;
   email?: string;
   company?: string;
   metadata?: Record<string, unknown>;
+}
+
+// ============ Outreach Types ============
+
+export type ConversationState = 'COLD' | 'NO_REPLY' | 'REPLIED' | 'POST_MEETING' | 'DROPPED';
+export type ContextLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+export type OutreachIntent = 'INTRO' | 'FOLLOW_UP' | 'RE_ENGAGE' | 'POST_MEETING';
+export type OutreachScenario = 'role_based' | 'industry_based' | 'no_reply_followup' | 'post_reply' | 'post_meeting' | 're_engage';
+export type LastOutcome = 'none' | 'sent' | 'no_reply' | 'replied' | 'meeting_booked' | 'meeting_done' | 'dropped';
+export type NextStep = 'SEND' | 'FOLLOW_UP' | 'WAIT' | 'SET_MEETING' | 'DROP';
+export type MeetingStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show';
+
+export interface OutreachState {
+  id: string;
+  user_id: string;
+  contact_id: string;
+  conversation_state: ConversationState;
+  context_level: ContextLevel;
+  outreach_intent: OutreachIntent;
+  scenario: OutreachScenario;
+  message_draft?: string;
+  last_outcome: LastOutcome;
+  next_step: NextStep;
+  last_interaction_at?: string;
+  days_since_last_interaction: number;
+  followup_count: number;
+  max_followups: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InteractionLog {
+  id: string;
+  user_id: string;
+  contact_id: string;
+  channel: string;
+  direction: 'outgoing' | 'incoming' | 'internal';
+  content: string;
+  subject?: string;
+  url?: string;
+  attachments?: unknown[];
+  sentiment?: 'positive' | 'neutral' | 'negative';
+  timestamp: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Meeting {
+  id: string;
+  user_id: string;
+  contact_id: string;
+  title?: string;
+  time: string;
+  duration_minutes: number;
+  channel: string;
+  location?: string;
+  meeting_url?: string;
+  status: MeetingStatus;
+  note?: string;
+  outcome?: string;
+  next_steps?: string;
+  participants?: unknown[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OutreachSuggestion {
+  contact: Contact;
+  state: OutreachState;
+  type: string;
+  next_step: NextStep;
+  days_since: number;
+  message_draft?: string;
+}
+
+export interface GenerateDraftResponse {
+  contact_id: string;
+  draft: string;
+  scenario: OutreachScenario;
+  context_level: ContextLevel;
+  state: OutreachState;
+}
+
+export interface UpdateOutreachInput {
+  contact_id: string;
+  event: string;
+  content?: string;
+  channel?: string;
+  sentiment?: string;
+}
+
+export interface UpdateOutreachResponse {
+  contact_id: string;
+  previous_state: ConversationState;
+  new_state: ConversationState;
+  next_step: NextStep;
+  state: OutreachState;
+}
+
+export interface CreateMeetingInput {
+  contact_id: string;
+  title?: string;
+  time: string;
+  duration_minutes?: number;
+  channel?: string;
+  location?: string;
+  meeting_url?: string;
+  note?: string;
+}
+
+export interface UpdateMeetingInput {
+  meeting_id: string;
+  status?: MeetingStatus;
+  note?: string;
+  outcome?: string;
+  next_steps?: string;
 }
 
 export class CosmoApiClient {
@@ -385,6 +498,14 @@ export class CosmoApiClient {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${this.config.apiKey}`,
     };
+
+    // Add user/org headers for data isolation
+    if (this.config.userId) {
+      headers['X-User-ID'] = this.config.userId;
+    }
+    if (this.config.orgId) {
+      headers['X-Org-ID'] = this.config.orgId;
+    }
 
     const response = await fetch(url, {
       method,
@@ -438,8 +559,7 @@ export class CosmoApiClient {
       const searchLower = params.search.toLowerCase();
       return contacts.filter(contact => {
         const searchableText = [
-          contact.first_name,
-          contact.last_name,
+          contact.name,
           contact.email,
           contact.company,
           contact.title
@@ -502,7 +622,7 @@ export class CosmoApiClient {
    * Import contacts from CSV file
    * @param csvContent - CSV content as string
    * @param fieldMapping - Optional mapping of CSV columns to contact fields.
-   *                       Standard fields: first_name, last_name, email, phone, company, job_title, address, city, country, state, zip
+   *                       Standard fields: name, email, phone, company, job_title, address, city, country, state, zip
    *                       Non-standard fields will be stored in profile (custom fields).
    *                       Example: { "Company Name": "company", "Custom Field": "profile.custom_field" }
    * @returns Import result with counts
@@ -880,5 +1000,170 @@ export class CosmoApiClient {
       { query, keywords, limit }
     );
     return result.data;
+  }
+
+  // ============ Outreach Operations ============
+
+  /**
+   * Suggest contacts for outreach
+   * @param type - 'cold', 'followup', or 'mixed'
+   * @param limit - Maximum number of contacts to return
+   */
+  async suggestOutreach(type: string, limit = 10): Promise<OutreachSuggestion[]> {
+    const result = await this.request<{ data: OutreachSuggestion[] }>(
+      'GET',
+      `/v1/outreach/suggest?type=${type}&limit=${limit}`
+    );
+    return result.data;
+  }
+
+  /**
+   * Generate outreach draft for a contact
+   * @param contactId - Contact ID
+   */
+  async generateOutreachDraft(contactId: string): Promise<GenerateDraftResponse> {
+    const result = await this.request<{ data: GenerateDraftResponse }>(
+      'POST',
+      `/v1/outreach/contacts/${contactId}/draft`
+    );
+    return result.data;
+  }
+
+  /**
+   * Update outreach state after an event
+   * @param input - Update input with event type
+   */
+  async updateOutreach(input: UpdateOutreachInput): Promise<UpdateOutreachResponse> {
+    const result = await this.request<{ data: UpdateOutreachResponse }>(
+      'POST',
+      `/v1/outreach/contacts/${input.contact_id}/update`,
+      {
+        event: input.event,
+        content: input.content,
+        channel: input.channel,
+        sentiment: input.sentiment,
+      }
+    );
+    return result.data;
+  }
+
+  /**
+   * Get outreach state for a contact
+   * @param contactId - Contact ID
+   */
+  async getOutreachState(contactId: string): Promise<OutreachState> {
+    const result = await this.request<{ data: OutreachState }>(
+      'GET',
+      `/v1/outreach/contacts/${contactId}/state`
+    );
+    return result.data;
+  }
+
+  /**
+   * Get interaction history for a contact
+   * @param contactId - Contact ID
+   * @param limit - Maximum number of interactions to return
+   */
+  async getInteractionHistory(contactId: string, limit = 20): Promise<InteractionLog[]> {
+    const result = await this.request<{ data: InteractionLog[] }>(
+      'GET',
+      `/v1/outreach/contacts/${contactId}/interactions?limit=${limit}`
+    );
+    return result.data;
+  }
+
+  /**
+   * Create a new meeting
+   * @param input - Meeting details
+   */
+  async createMeeting(input: CreateMeetingInput): Promise<Meeting> {
+    const result = await this.request<{ data: Meeting }>(
+      'POST',
+      '/v1/outreach/meetings',
+      input
+    );
+    return result.data;
+  }
+
+  /**
+   * Update a meeting
+   * @param input - Meeting update details
+   */
+  async updateMeeting(input: UpdateMeetingInput): Promise<Meeting> {
+    const { meeting_id, ...data } = input;
+    const result = await this.request<{ data: Meeting }>(
+      'PATCH',
+      `/v1/outreach/meetings/${meeting_id}`,
+      data
+    );
+    return result.data;
+  }
+
+  /**
+   * Get meetings for a contact
+   * @param contactId - Contact ID
+   */
+  async getMeetings(contactId: string): Promise<Meeting[]> {
+    const result = await this.request<{ data: Meeting[] }>(
+      'GET',
+      `/v1/outreach/contacts/${contactId}/meetings`
+    );
+    return result.data;
+  }
+
+  // ============ Notes Operations ============
+
+  /**
+   * Add an internal team note for a contact
+   * @param contactId - Contact ID
+   * @param content - Note content
+   */
+  async addNote(contactId: string, content: string): Promise<InteractionLog> {
+    const result = await this.request<{ data: InteractionLog }>(
+      'POST',
+      `/v1/outreach/contacts/${contactId}/notes`,
+      { content }
+    );
+    return result.data;
+  }
+
+  /**
+   * Get all internal notes for a contact
+   * @param contactId - Contact ID
+   * @param limit - Maximum number of notes to return
+   */
+  async getNotes(contactId: string, limit = 50): Promise<InteractionLog[]> {
+    const result = await this.request<{ data: InteractionLog[] }>(
+      'GET',
+      `/v1/outreach/contacts/${contactId}/notes?limit=${limit}`
+    );
+    return result.data;
+  }
+
+  /**
+   * Update an internal note
+   * @param contactId - Contact ID
+   * @param noteId - Note ID
+   * @param content - New note content
+   */
+  async updateNote(contactId: string, noteId: string, content: string): Promise<InteractionLog> {
+    const result = await this.request<{ data: InteractionLog }>(
+      'PATCH',
+      `/v1/outreach/contacts/${contactId}/notes/${noteId}`,
+      { content }
+    );
+    return result.data;
+  }
+
+  /**
+   * Delete an internal note
+   * @param contactId - Contact ID
+   * @param noteId - Note ID
+   */
+  async deleteNote(contactId: string, noteId: string): Promise<void> {
+    await this.request<{ message: string }>(
+      'DELETE',
+      `/v1/outreach/contacts/${contactId}/notes/${noteId}`
+    );
   }
 }

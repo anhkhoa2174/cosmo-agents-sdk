@@ -79,13 +79,9 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
           type: 'string',
           description: 'Contact email (required)',
         },
-        first_name: {
+        name: {
           type: 'string',
-          description: 'First name',
-        },
-        last_name: {
-          type: 'string',
-          description: 'Last name',
+          description: 'Full name',
         },
         company: {
           type: 'string',
@@ -107,7 +103,7 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
   {
     name: 'import_contacts_csv',
     description:
-      'Import contacts from CSV data. Supports field mapping to map CSV columns to contact fields. Standard fields: first_name, last_name, email, phone, company, job_title, address, city, country, state, zip. Non-standard fields are stored as custom fields in the profile.',
+      'Import contacts from CSV data. Supports field mapping to map CSV columns to contact fields. Standard fields: name, email, phone, company, job_title, address, city, country, state, zip. Non-standard fields are stored as custom fields in the profile.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -922,6 +918,280 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
     },
   },
 
+  // ============ Outreach Tools (Phase 2) ============
+  {
+    name: 'suggest_outreach',
+    description:
+      'Get suggested contacts for outreach. Returns contacts that need cold outreach, follow-up, or both. Use this to find contacts to work on today.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        type: {
+          type: 'string',
+          enum: ['cold', 'followup', 'mixed'],
+          description: 'Type of outreach: cold (new contacts), followup (contacts needing follow-up), mixed (60% cold, 40% follow-up)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of contacts to return (default: 50)',
+        },
+      },
+      required: ['type'],
+    },
+  },
+  {
+    name: 'generate_outreach_draft',
+    description:
+      'Generate a message draft for a contact based on their conversation state and context. The draft is personalized based on the contact profile and interaction history.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contact_id: {
+          type: 'string',
+          description: 'The contact ID to generate draft for',
+        },
+      },
+      required: ['contact_id'],
+    },
+  },
+  {
+    name: 'update_outreach',
+    description:
+      'Update outreach status after sending a message, receiving a reply, or marking no reply. This logs the interaction and updates the contact state.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contact_id: {
+          type: 'string',
+          description: 'The contact ID to update',
+        },
+        event: {
+          type: 'string',
+          enum: ['sent', 'replied', 'no_reply', 'meeting_booked', 'meeting_done', 'drop'],
+          description: 'The outreach event: sent (message sent), replied (contact replied), no_reply (no response), meeting_booked, meeting_done, drop (stop outreach)',
+        },
+        content: {
+          type: 'string',
+          description: 'Message content (for sent/replied events)',
+        },
+        channel: {
+          type: 'string',
+          enum: ['LinkedIn', 'Email', 'Call', 'Meeting', 'Note'],
+          description: 'Channel of interaction (default: LinkedIn)',
+        },
+        sentiment: {
+          type: 'string',
+          enum: ['positive', 'neutral', 'negative'],
+          description: 'Sentiment of reply (for replied events)',
+        },
+      },
+      required: ['contact_id', 'event'],
+    },
+  },
+  {
+    name: 'get_outreach_state',
+    description:
+      'Get the current outreach state for a contact including conversation state, last outcome, next step, and days since last interaction.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contact_id: {
+          type: 'string',
+          description: 'The contact ID to get state for',
+        },
+      },
+      required: ['contact_id'],
+    },
+  },
+  {
+    name: 'get_interaction_history',
+    description:
+      'Get interaction history for a contact including all sent/received messages and notes.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contact_id: {
+          type: 'string',
+          description: 'The contact ID to get history for',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of interactions to return (default: 10)',
+        },
+      },
+      required: ['contact_id'],
+    },
+  },
+  {
+    name: 'create_meeting',
+    description:
+      'Create a meeting with a contact. Use this after a contact agrees to meet.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contact_id: {
+          type: 'string',
+          description: 'The contact ID to create meeting with',
+        },
+        title: {
+          type: 'string',
+          description: 'Meeting title',
+        },
+        time: {
+          type: 'string',
+          description: 'Meeting time in ISO format (e.g., "2026-01-25T10:00:00Z")',
+        },
+        duration_minutes: {
+          type: 'number',
+          description: 'Meeting duration in minutes (default: 30)',
+        },
+        channel: {
+          type: 'string',
+          enum: ['Zoom', 'Google Meet', 'Call', 'Offline'],
+          description: 'Meeting channel (default: Zoom)',
+        },
+        meeting_url: {
+          type: 'string',
+          description: 'Meeting URL (e.g., Zoom link)',
+        },
+        note: {
+          type: 'string',
+          description: 'Meeting note or agenda',
+        },
+      },
+      required: ['contact_id', 'time'],
+    },
+  },
+  {
+    name: 'update_meeting',
+    description:
+      'Update a meeting status (completed, cancelled) and add notes/outcome.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        meeting_id: {
+          type: 'string',
+          description: 'The meeting ID to update',
+        },
+        status: {
+          type: 'string',
+          enum: ['scheduled', 'completed', 'cancelled', 'no_show'],
+          description: 'New meeting status',
+        },
+        note: {
+          type: 'string',
+          description: 'Meeting notes',
+        },
+        outcome: {
+          type: 'string',
+          description: 'Meeting outcome summary',
+        },
+        next_steps: {
+          type: 'string',
+          description: 'Agreed next steps',
+        },
+      },
+      required: ['meeting_id', 'status'],
+    },
+  },
+  {
+    name: 'get_meetings',
+    description:
+      'Get all meetings for a contact.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contact_id: {
+          type: 'string',
+          description: 'The contact ID to get meetings for',
+        },
+      },
+      required: ['contact_id'],
+    },
+  },
+
+  // ============ Notes Tools (Team Conversation History) ============
+  {
+    name: 'add_note',
+    description:
+      'Add an internal team note for a contact. Notes are internal and not visible to the contact - use for tracking internal discussions, observations, or important information.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contact_id: {
+          type: 'string',
+          description: 'The contact ID to add the note for',
+        },
+        content: {
+          type: 'string',
+          description: 'The note content (can be multi-line, markdown supported)',
+        },
+      },
+      required: ['contact_id', 'content'],
+    },
+  },
+  {
+    name: 'get_notes',
+    description:
+      'Get all internal team notes for a contact. Returns notes in reverse chronological order.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contact_id: {
+          type: 'string',
+          description: 'The contact ID to get notes for',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of notes to return (default: 50)',
+        },
+      },
+      required: ['contact_id'],
+    },
+  },
+  {
+    name: 'update_note',
+    description:
+      'Update an existing internal note.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contact_id: {
+          type: 'string',
+          description: 'The contact ID',
+        },
+        note_id: {
+          type: 'string',
+          description: 'The note ID to update',
+        },
+        content: {
+          type: 'string',
+          description: 'The new note content',
+        },
+      },
+      required: ['contact_id', 'note_id', 'content'],
+    },
+  },
+  {
+    name: 'delete_note',
+    description:
+      'Delete an internal note.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contact_id: {
+          type: 'string',
+          description: 'The contact ID',
+        },
+        note_id: {
+          type: 'string',
+          description: 'The note ID to delete',
+        },
+      },
+      required: ['contact_id', 'note_id'],
+    },
+  },
+
   // ============ Apollo to COSMO Import Tools ============
   {
     name: 'import_apollo_contacts_to_cosmo',
@@ -1000,6 +1270,20 @@ export type ToolName =
   | 'hybrid_search_contacts'
   | 'count_contacts_created'
   | 'count_contacts_by_keyword'
+  // Outreach tools (Phase 2)
+  | 'suggest_outreach'
+  | 'generate_outreach_draft'
+  | 'update_outreach'
+  | 'get_outreach_state'
+  | 'get_interaction_history'
+  | 'create_meeting'
+  | 'update_meeting'
+  | 'get_meetings'
+  // Notes tools (Team Conversation)
+  | 'add_note'
+  | 'get_notes'
+  | 'update_note'
+  | 'delete_note'
   // Apollo.io tools
   | 'apollo_people_search'
   | 'apollo_organization_search'
