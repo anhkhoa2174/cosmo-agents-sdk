@@ -1,0 +1,33 @@
+# mise.toml - Tool version management
+# See https://mise.jdx.dev for documentation
+
+[tools]
+node = "22"
+
+[env]
+# Default environment variables (can be overridden by .env)
+NODE_ENV = "development"
+
+[tasks.build]
+description = "Build TypeScript to JavaScript"
+run = "npm run build"
+
+[tasks.dev]
+description = "Run CLI in development mode"
+run = "npm run dev"
+
+[tasks.chat]
+description = "Start interactive chat mode"
+run = "npm run chat"
+
+[tasks.typecheck]
+description = "Run TypeScript type checking"
+run = "npx tsc --noEmit"
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = "rm -rf dist"
+
+[tasks.rebuild]
+description = "Clean and rebuild"
+depends = ["clean", "build"]

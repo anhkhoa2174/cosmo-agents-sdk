@@ -1,4 +1,21 @@
 node_modules/
 dist/
 .env
+.env.*
 *.log
+
+# Token cache
+.cosmo-cli-token.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Beads archive (keep issues.jsonl tracked)
+.beads/archive.jsonl

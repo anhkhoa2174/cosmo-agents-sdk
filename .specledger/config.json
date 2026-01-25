@@ -1,0 +1,21 @@
+{
+  "version": "1.0.0",
+  "project": "cosmo-agents-sdk",
+  "description": "COSMO AI Agents SDK - Spec-Driven Development Configuration",
+  "templates": {
+    "spec": "templates/spec.md",
+    "plan": "templates/plan.md",
+    "tasks": "templates/tasks.md"
+  },
+  "constitution": "constitution.md",
+  "features_dir": "features",
+  "beads_integration": {
+    "enabled": true,
+    "beads_path": "../.beads"
+  },
+  "workflow": {
+    "phases": ["specify", "clarify", "plan", "tasks", "implement", "review"],
+    "require_spec_approval": true,
+    "require_plan_approval": true
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "project": "cosmo-agents-sdk",
+  "description": "COSMO AI Agents SDK - Claude Agent Development Kit",
+  "issuePrefix": "COSMO",
+  "defaultLabels": ["enhancement", "bug", "documentation", "tooling", "agent", "mcp"],
+  "priorities": ["critical", "high", "medium", "low"],
+  "statuses": ["backlog", "ready", "in-progress", "review", "done"],
+  "issueFile": "issues.jsonl",
+  "archiveFile": "archive.jsonl",
+  "sync": {
+    "enabled": false,
+    "remote": null
+  }
+}
