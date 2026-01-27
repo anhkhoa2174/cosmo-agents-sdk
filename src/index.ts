@@ -16,6 +16,12 @@ export { OutreachAgent } from './agents/outreach-agent.js';
 export { AnalyticsAgent } from './agents/analytics-agent.js';
 export { EnrichmentAgent } from './agents/enrichment-agent.js';
 
+// Vietnamese agents (tiếng Việt)
+export { ResearchAgentVi } from './agents/research-agent-vi.js';
+export { OutreachAgentVi } from './agents/outreach-agent-vi.js';
+export { AnalyticsAgentVi } from './agents/analytics-agent-vi.js';
+export { EnrichmentAgentVi } from './agents/enrichment-agent-vi.js';
+
 // Multi-agent orchestration
 export {
   AgentOrchestrator,
