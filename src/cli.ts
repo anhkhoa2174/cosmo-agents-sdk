@@ -137,6 +137,74 @@ async function promptForCredentials(): Promise<{ email: string; password: string
   });
 }
 
+/**
+ * Prompt user for an API key and save it to .env file
+ */
+async function promptAndSaveApiKey(keyName: string, description: string): Promise<string> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    console.log(chalk.yellow(`\n${description}`));
+    rl.question(chalk.cyan(`Paste your ${keyName}: `), async (apiKey) => {
+      rl.close();
+
+      const trimmedKey = apiKey.trim();
+      if (!trimmedKey) {
+        console.log(chalk.red('No API key provided. Exiting.'));
+        process.exit(1);
+      }
+
+      // Save to .env file
+      const envPath = path.resolve(process.cwd(), '.env');
+      let envContent = '';
+
+      if (fs.existsSync(envPath)) {
+        envContent = fs.readFileSync(envPath, 'utf-8');
+        // Check if key already exists and update it
+        const regex = new RegExp(`^${keyName}=.*$`, 'm');
+        if (regex.test(envContent)) {
+          envContent = envContent.replace(regex, `${keyName}=${trimmedKey}`);
+        } else {
+          envContent += `\n${keyName}=${trimmedKey}`;
+        }
+      } else {
+        envContent = `${keyName}=${trimmedKey}\n`;
+      }
+
+      fs.writeFileSync(envPath, envContent);
+      console.log(chalk.green(`✓ ${keyName} saved to .env`));
+
+      // Update process.env so it's available immediately
+      process.env[keyName] = trimmedKey;
+
+      resolve(trimmedKey);
+    });
+  });
+}
+
+/**
+ * Prompt user to choose authentication method
+ */
+async function promptAuthMethod(): Promise<'login' | 'apikey'> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    console.log(chalk.yellow('\nNo token found. Choose authentication method:'));
+    console.log(chalk.gray('  1. Login with email/password'));
+    console.log(chalk.gray('  2. Paste API key directly'));
+    rl.question(chalk.cyan('Enter choice (1 or 2): '), (answer) => {
+      rl.close();
+      resolve(answer.trim() === '2' ? 'apikey' : 'login');
+    });
+  });
+}
+
 async function getOrRefreshToken(baseUrl: string): Promise<string> {
   // 1. Check environment variable first
   if (process.env.COSMO_API_KEY) {
@@ -159,8 +227,18 @@ async function getOrRefreshToken(baseUrl: string): Promise<string> {
     return await loginAndGetToken(baseUrl, email, password);
   }
 
-  // 4. Prompt for credentials
-  console.log(chalk.yellow('\nNo token found. Please login:'));
+  // 4. Prompt user to choose method
+  const method = await promptAuthMethod();
+
+  if (method === 'apikey') {
+    // Paste API key directly and save to .env
+    return await promptAndSaveApiKey(
+      'COSMO_API_KEY',
+      'Paste your COSMO API key (JWT token from the dashboard):'
+    );
+  }
+
+  // Login with credentials
   const credentials = await promptForCredentials();
   return await loginAndGetToken(baseUrl, credentials.email, credentials.password);
 }
@@ -281,14 +359,15 @@ async function startChat(model: string, agentType: AgentType = 'cosmo', sessionI
   console.log(chalk.cyan('╚═══════════════════════════════════════════════╝\n'));
 
   // Validate environment
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  let anthropicKey = process.env.ANTHROPIC_API_KEY;
   const cosmoBaseUrl = process.env.COSMO_BASE_URL || 'http://localhost:8081';
   const apolloApiKey = process.env.APOLLO_IO_API_KEY;
 
   if (!anthropicKey) {
-    console.log(chalk.red('Error: ANTHROPIC_API_KEY not set'));
-    console.log(chalk.gray('Set it in .env file or environment variable'));
-    process.exit(1);
+    anthropicKey = await promptAndSaveApiKey(
+      'ANTHROPIC_API_KEY',
+      'ANTHROPIC_API_KEY not found. Get your API key from https://console.anthropic.com/'
+    );
   }
 
   if (apolloApiKey) {
@@ -454,12 +533,14 @@ async function startChat(model: string, agentType: AgentType = 'cosmo', sessionI
 async function runAnalysis(contactId: string) {
   console.log(chalk.cyan(`\nRunning full analysis on contact: ${contactId}\n`));
 
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  let anthropicKey = process.env.ANTHROPIC_API_KEY;
   const cosmoBaseUrl = process.env.COSMO_BASE_URL || 'http://localhost:8081';
 
   if (!anthropicKey) {
-    console.log(chalk.red('Error: ANTHROPIC_API_KEY not set'));
-    process.exit(1);
+    anthropicKey = await promptAndSaveApiKey(
+      'ANTHROPIC_API_KEY',
+      'ANTHROPIC_API_KEY not found. Get your API key from https://console.anthropic.com/'
+    );
   }
 
   let cosmoApiKey: string;

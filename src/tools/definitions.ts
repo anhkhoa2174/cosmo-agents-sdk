@@ -1023,6 +1023,39 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'add_interaction',
+    description:
+      'Add a new interaction record for a contact. Use this to log outgoing messages, incoming replies, or internal notes.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contact_id: {
+          type: 'string',
+          description: 'The contact ID to add interaction for',
+        },
+        direction: {
+          type: 'string',
+          enum: ['outgoing', 'incoming', 'internal'],
+          description: 'Direction of the interaction: outgoing (sent to contact), incoming (received from contact), internal (team notes)',
+        },
+        channel: {
+          type: 'string',
+          description: 'Communication channel (e.g., "email", "linkedin", "phone", "meeting")',
+        },
+        content: {
+          type: 'string',
+          description: 'Content of the interaction (message text, note content, etc.)',
+        },
+        sentiment: {
+          type: 'string',
+          enum: ['positive', 'neutral', 'negative'],
+          description: 'Optional sentiment analysis of the interaction',
+        },
+      },
+      required: ['contact_id', 'direction', 'channel', 'content'],
+    },
+  },
+  {
     name: 'create_meeting',
     description:
       'Create a meeting with a contact. Use this after a contact agrees to meet.',
@@ -1276,6 +1309,7 @@ export type ToolName =
   | 'update_outreach'
   | 'get_outreach_state'
   | 'get_interaction_history'
+  | 'add_interaction'
   | 'create_meeting'
   | 'update_meeting'
   | 'get_meetings'

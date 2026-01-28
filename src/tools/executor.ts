@@ -114,6 +114,8 @@ export class ToolExecutor {
           return await this.getOutreachState(input);
         case 'get_interaction_history':
           return await this.getInteractionHistory(input);
+        case 'add_interaction':
+          return await this.addInteraction(input);
         case 'create_meeting':
           return await this.createMeeting(input);
         case 'update_meeting':
@@ -1444,6 +1446,34 @@ export class ToolExecutor {
         sentiment: i.sentiment,
         timestamp: i.timestamp,
       })),
+    });
+  }
+
+  private async addInteraction(input: Record<string, unknown>): Promise<string> {
+    const contactId = input.contact_id as string;
+    const direction = input.direction as 'outgoing' | 'incoming' | 'internal';
+    const channel = input.channel as string;
+    const content = input.content as string;
+    const sentiment = input.sentiment as 'positive' | 'neutral' | 'negative' | undefined;
+
+    const result = await this.client.addInteraction(contactId, {
+      direction,
+      channel,
+      content,
+      sentiment,
+    });
+
+    return JSON.stringify({
+      success: true,
+      interaction: {
+        id: result.id,
+        contact_id: result.contact_id,
+        channel: result.channel,
+        direction: result.direction,
+        content: result.content,
+        sentiment: result.sentiment,
+        timestamp: result.timestamp,
+      },
     });
   }
 
