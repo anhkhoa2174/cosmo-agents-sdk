@@ -10,7 +10,7 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
   {
     name: 'search_contacts',
     description:
-      'Search for contacts in COSMO CRM. Use this to find contacts by name, email, company, city, country, industry, or other attributes. You can use query for text search OR use specific filters.',
+      'Search for contacts in COSMO CRM. Returns total count of matching contacts and a paginated list. Use this to find contacts by name, email, company, city, country, industry, or other attributes. To get total count, call with no filters.',
     input_schema: {
       type: 'object' as const,
       properties: {

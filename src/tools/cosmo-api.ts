@@ -462,6 +462,13 @@ export interface UpdateOutreachResponse {
   state: OutreachState;
 }
 
+export interface AddInteractionInput {
+  direction: 'outgoing' | 'incoming' | 'internal';
+  channel: string;
+  content: string;
+  sentiment?: 'positive' | 'neutral' | 'negative';
+}
+
 export interface CreateMeetingInput {
   contact_id: string;
   title?: string;
@@ -1068,6 +1075,20 @@ export class CosmoApiClient {
     const result = await this.request<{ data: InteractionLog[] }>(
       'GET',
       `/v1/outreach/contacts/${contactId}/interactions?limit=${limit}`
+    );
+    return result.data;
+  }
+
+  /**
+   * Add a new interaction for a contact
+   * @param contactId - Contact ID
+   * @param input - Interaction details (direction, channel, content, sentiment)
+   */
+  async addInteraction(contactId: string, input: AddInteractionInput): Promise<InteractionLog> {
+    const result = await this.request<{ data: InteractionLog }>(
+      'POST',
+      `/v1/outreach/contacts/${contactId}/interactions`,
+      input
     );
     return result.data;
   }

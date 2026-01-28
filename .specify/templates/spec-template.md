@@ -1,60 +1,127 @@
-# Feature Specification: [FEATURE_NAME]
+# Feature Specification: [FEATURE NAME]
 
-## Overview
+**Feature Branch**: `[###-feature-name]`
+**Created**: [DATE]
+**Status**: Draft
+**Input**: User description: "$ARGUMENTS"
 
-### Problem Statement
-[What problem does this feature solve? Why is it needed?]
+## User Scenarios & Testing *(mandatory)*
 
-### Vision
-[High-level description of the solution and its value proposition]
+<!--
+  IMPORTANT: User stories should be PRIORITIZED as user journeys ordered by importance.
+  Each user story/journey must be INDEPENDENTLY TESTABLE - meaning if you implement just ONE of them,
+  you should still have a viable MVP (Minimum Viable Product) that delivers value.
 
-## User Scenarios & Testing
+  Assign priorities (P1, P2, P3, etc.) to each story, where P1 is the most critical.
+  Think of each story as a standalone slice of functionality that can be:
+  - Developed independently
+  - Tested independently
+  - Deployed independently
+  - Demonstrated to users independently
+-->
 
-### Primary User Flow
-[Step-by-step description of the main user journey]
+### User Story 1 - [Brief Title] (Priority: P1)
 
-### Acceptance Scenarios
-[Given/When/Then scenarios for key behaviors]
+[Describe this user journey in plain language]
 
-## Functional Requirements
+**Why this priority**: [Explain the value and why it has this priority level]
 
-### [FR-1] [Requirement Name]
-**Description**: [What the system must do]
-**Acceptance Criteria**:
-- [Criterion 1]
-- [Criterion 2]
+**Independent Test**: [Describe how this can be tested independently - e.g., "Can be fully tested by [specific action] and delivers [specific value]"]
 
-## Success Criteria
+**Acceptance Scenarios**:
 
-[Measurable, technology-agnostic outcomes that define feature success]
+1. **Given** [initial state], **When** [action], **Then** [expected outcome]
+2. **Given** [initial state], **When** [action], **Then** [expected outcome]
 
-- [ ] [Criterion 1 - with specific metric]
-- [ ] [Criterion 2 - with specific metric]
+---
 
-## Key Entities (Optional)
+### User Story 2 - [Brief Title] (Priority: P2)
 
-[Data entities involved in this feature, if applicable]
+[Describe this user journey in plain language]
 
-| Entity | Description | Key Attributes |
-|--------|-------------|----------------|
-| [Name] | [Purpose]   | [Attributes]   |
+**Why this priority**: [Explain the value and why it has this priority level]
 
-## Dependencies & Assumptions
+**Independent Test**: [Describe how this can be tested independently]
 
-### Dependencies
-[External systems, features, or resources this depends on]
+**Acceptance Scenarios**:
 
-### Assumptions
-[Assumptions made during specification; document reasonable defaults here]
+1. **Given** [initial state], **When** [action], **Then** [expected outcome]
 
-## Previous Work
+---
 
-[Related Beads issues, existing features, or prior implementations]
+### User Story 3 - [Brief Title] (Priority: P3)
 
-## Out of Scope
+[Describe this user journey in plain language]
 
-[Explicitly excluded from this feature]
+**Why this priority**: [Explain the value and why it has this priority level]
 
-## Open Questions
+**Independent Test**: [Describe how this can be tested independently]
 
-[Items needing clarification - MAX 3 items marked with [NEEDS CLARIFICATION: question]]
+**Acceptance Scenarios**:
+
+1. **Given** [initial state], **When** [action], **Then** [expected outcome]
+
+---
+
+[Add more user stories as needed, each with an assigned priority]
+
+### Edge Cases
+
+<!--
+  ACTION REQUIRED: The content in this section represents placeholders.
+  Fill them out with the right edge cases.
+-->
+
+- What happens when [boundary condition]?
+- How does system handle [error scenario]?
+
+## Requirements *(mandatory)*
+
+<!--
+  ACTION REQUIRED: The content in this section represents placeholders.
+  Fill them out with the right functional requirements.
+-->
+
+### Functional Requirements
+
+- **FR-001**: System MUST [specific capability, e.g., "allow users to create accounts"]
+- **FR-002**: System MUST [specific capability, e.g., "validate email addresses"]
+- **FR-003**: Users MUST be able to [key interaction, e.g., "reset their password"]
+- **FR-004**: System MUST [data requirement, e.g., "persist user preferences"]
+- **FR-005**: System MUST [behavior, e.g., "log all security events"]
+
+*Example of marking unclear requirements:*
+
+- **FR-006**: System MUST authenticate users via [NEEDS CLARIFICATION: auth method not specified - email/password, SSO, OAuth?]
+- **FR-007**: System MUST retain user data for [NEEDS CLARIFICATION: retention period not specified]
+
+### Key Entities *(include if feature involves data)*
+
+- **[Entity 1]**: [What it represents, key attributes without implementation]
+- **[Entity 2]**: [What it represents, relationships to other entities]
+
+## Success Criteria *(mandatory)*
+
+<!--
+  ACTION REQUIRED: Define measurable success criteria.
+  These must be technology-agnostic and measurable.
+-->
+
+### Measurable Outcomes
+
+- **SC-001**: [Measurable metric, e.g., "Users can complete account creation in under 2 minutes"]
+- **SC-002**: [Measurable metric, e.g., "System handles 1000 concurrent users without degradation"]
+- **SC-003**: [User satisfaction metric, e.g., "90% of users successfully complete primary task on first attempt"]
+- **SC-004**: [Business metric, e.g., "Reduce support tickets related to [X] by 50%"]
+
+<!--
+  ACTION REQUIRED: Use Beads queries to identify any previous related features or tasks. `bd list --type task`
+  Reference them here to avoid duplication of effort.
+-->
+
+### Previous work
+
+### Epic: [Epic ID] - [Epic Title]
+
+- **[Feature/Task Name]**: [Brief description of the feature or task]
+- **[Feature/Task Name]**: [Brief description of the feature or task]

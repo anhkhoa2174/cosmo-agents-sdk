@@ -182,7 +182,8 @@ export class ToolExecutor {
     const contacts = result.list;
 
     return JSON.stringify({
-      count: contacts.length,
+      total: result.total,
+      returned: contacts.length,
       contacts: contacts.map((item) => {
         const c = item.entity;
         return {
