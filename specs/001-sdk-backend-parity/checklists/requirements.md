@@ -1,7 +1,8 @@
-# Specification Quality Checklist: SDK-Backend API Parity
+# Specification Quality Checklist: SDK-Backend API Parity (Outreach Focus)
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-02-03
+**Updated**: 2026-02-03
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
@@ -32,8 +33,12 @@
 ## Notes
 
 - All items pass validation
-- Spec is ready for `/specledger.clarify` or `/specledger.plan`
-- Feature scope covers 235+ backend endpoints mapped to SDK methods
-- 8 user stories with clear acceptance scenarios
-- 29 functional requirements covering all major endpoint categories
-- No clarifications needed - requirements are clear based on existing backend/SDK structure
+- **Spec Updated** to prioritize outreach features that match frontend capabilities:
+  - **P1 (Core)**: Message Draft Generation, Outreach Suggestions, State Management, Meeting Prep, Conversation History
+  - **P2 (Important)**: Meeting Management, Notes System, Campaign Management
+  - **P3 (Nice-to-have)**: Agent and Template Management
+- 9 user stories covering all frontend outreach features
+- 30 functional requirements covering all outreach capabilities
+- 8 measurable success criteria
+- English/Vietnamese language support specified throughout
+- Ready for `/specledger.clarify` or `/specledger.plan`
