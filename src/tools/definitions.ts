@@ -942,13 +942,18 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
   {
     name: 'generate_outreach_draft',
     description:
-      'Generate a message draft for a contact based on their conversation state and context. The draft is personalized based on the contact profile and interaction history.',
+      'Generate an AI-powered message draft for a contact based on their profile, conversation history, and outreach state. Supports English and Vietnamese.',
     input_schema: {
       type: 'object' as const,
       properties: {
         contact_id: {
           type: 'string',
           description: 'The contact ID to generate draft for',
+        },
+        language: {
+          type: 'string',
+          enum: ['en', 'vi'],
+          description: 'Language for the generated draft. en=English, vi=Vietnamese. Default: vi',
         },
       },
       required: ['contact_id'],
@@ -1142,6 +1147,26 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
       required: ['contact_id'],
     },
   },
+  {
+    name: 'generate_meeting_prep',
+    description:
+      'Generate an AI meeting preparation document with meeting objectives, talking points, discovery questions, potential objections, and suggested next steps. Only works for scheduled meetings. Supports English and Vietnamese.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        meeting_id: {
+          type: 'string',
+          description: 'The meeting ID to generate prep for',
+        },
+        language: {
+          type: 'string',
+          enum: ['en', 'vi'],
+          description: 'Language for the meeting prep. en=English, vi=Vietnamese. Default: vi',
+        },
+      },
+      required: ['meeting_id'],
+    },
+  },
 
   // ============ Notes Tools (Team Conversation History) ============
   {
@@ -1313,6 +1338,7 @@ export type ToolName =
   | 'create_meeting'
   | 'update_meeting'
   | 'get_meetings'
+  | 'generate_meeting_prep'
   // Notes tools (Team Conversation)
   | 'add_note'
   | 'get_notes'

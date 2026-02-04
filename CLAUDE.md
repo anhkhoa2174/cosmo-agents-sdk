@@ -124,3 +124,10 @@ Currently no test framework configured. When adding tests:
 - Use `apollo_people_search` for finding prospects
 - Use `import_apollo_contacts_to_cosmo` to import to CRM
 - API client initialized lazily in executor
+
+## Active Technologies
+- TypeScript 5.7.3, Node.js (ES Modules) + @anthropic-ai/sdk ^0.39.0, axios ^1.6.7, zod ^3.24.2 (001-sdk-backend-parity)
+- N/A (SDK is stateless, calls backend API) (001-sdk-backend-parity)
+
+## Recent Changes
+- 001-sdk-backend-parity: Added TypeScript 5.7.3, Node.js (ES Modules) + @anthropic-ai/sdk ^0.39.0, axios ^1.6.7, zod ^3.24.2
