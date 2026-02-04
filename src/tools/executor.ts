@@ -3,7 +3,7 @@
  */
 
 import * as fs from 'fs';
-import { CosmoApiClient, MeetingStatus } from './cosmo-api.js';
+import { CosmoApiClient, MeetingStatus, Language } from './cosmo-api.js';
 import { ApolloApiClient } from '../mcp/apollo-client.js';
 import type { ToolName } from './definitions.js';
 
@@ -122,6 +122,8 @@ export class ToolExecutor {
           return await this.updateMeeting(input);
         case 'get_meetings':
           return await this.getMeetings(input);
+        case 'generate_meeting_prep':
+          return await this.generateMeetingPrep(input);
         // Notes tools (Team Conversation)
         case 'add_note':
           return await this.addNote(input);
@@ -1377,14 +1379,16 @@ export class ToolExecutor {
 
   private async generateOutreachDraft(input: Record<string, unknown>): Promise<string> {
     const contactId = input.contact_id as string;
+    const language = (input.language as Language) || 'vi';
 
-    const result = await this.client.generateOutreachDraft(contactId);
+    const result = await this.client.generateOutreachDraft(contactId, language);
 
     return JSON.stringify({
       contact_id: contactId,
       draft: result.draft,
       state: result.state,
       scenario: result.scenario,
+      language,
     });
   }
 
@@ -1550,6 +1554,25 @@ export class ToolExecutor {
         outcome: m.outcome,
         next_steps: m.next_steps,
       })),
+    });
+  }
+
+  private async generateMeetingPrep(input: Record<string, unknown>): Promise<string> {
+    const meetingId = input.meeting_id as string;
+    const language = (input.language as Language) || 'vi';
+
+    const result = await this.client.generateMeetingPrep(meetingId, language);
+
+    return JSON.stringify({
+      success: true,
+      meeting_id: meetingId,
+      contact_id: result.contact_id,
+      title: result.title,
+      time: result.time,
+      status: result.status,
+      meeting_prep: result.meeting_prep,
+      language,
+      message: `Meeting prep generated in ${language === 'en' ? 'English' : 'Vietnamese'}`,
     });
   }
 

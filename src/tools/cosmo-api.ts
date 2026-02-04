@@ -375,6 +375,11 @@ export type LastOutcome = 'none' | 'sent' | 'no_reply' | 'replied' | 'meeting_bo
 export type NextStep = 'SEND' | 'FOLLOW_UP' | 'WAIT' | 'SET_MEETING' | 'DROP';
 export type MeetingStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show';
 
+/**
+ * Supported languages for AI generation
+ */
+export type Language = 'en' | 'vi';
+
 export interface OutreachState {
   id: string;
   user_id: string;
@@ -424,6 +429,8 @@ export interface Meeting {
   note?: string;
   outcome?: string;
   next_steps?: string;
+  meeting_content?: string;
+  meeting_prep?: string;  // AI-generated meeting prep document
   participants?: unknown[];
   created_at: string;
   updated_at: string;
@@ -1027,11 +1034,13 @@ export class CosmoApiClient {
   /**
    * Generate outreach draft for a contact
    * @param contactId - Contact ID
+   * @param language - Language for the draft ('en' for English, 'vi' for Vietnamese). Default: 'vi'
    */
-  async generateOutreachDraft(contactId: string): Promise<GenerateDraftResponse> {
+  async generateOutreachDraft(contactId: string, language: Language = 'vi'): Promise<GenerateDraftResponse> {
     const result = await this.request<{ data: GenerateDraftResponse }>(
       'POST',
-      `/v1/outreach/contacts/${contactId}/draft`
+      `/v1/outreach/contacts/${contactId}/draft`,
+      { language }
     );
     return result.data;
   }
@@ -1128,6 +1137,23 @@ export class CosmoApiClient {
     const result = await this.request<{ data: Meeting[] }>(
       'GET',
       `/v1/outreach/contacts/${contactId}/meetings`
+    );
+    return result.data;
+  }
+
+  /**
+   * Generate AI meeting preparation document
+   * Includes meeting objectives, talking points, discovery questions, potential objections, and suggested next steps.
+   * Only works for scheduled meetings.
+   * @param meetingId - The meeting ID to generate prep for
+   * @param language - Language for the prep ('en' for English, 'vi' for Vietnamese). Default: 'vi'
+   * @returns Meeting object with meeting_prep field populated
+   */
+  async generateMeetingPrep(meetingId: string, language: Language = 'vi'): Promise<Meeting> {
+    const result = await this.request<{ data: Meeting }>(
+      'POST',
+      `/v1/outreach/meetings/${meetingId}/generate-prep`,
+      { language }
     );
     return result.data;
   }
