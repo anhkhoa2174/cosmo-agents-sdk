@@ -133,5 +133,6 @@ Currently no test framework configured. When adding tests:
 - Go 1.21+ (backend), TypeScript 5.7+ / Next.js (frontend) + Fiber (HTTP), GORM (ORM), OpenAI (AI generation), React Query, ky (HTTP client), shadcn/ui (003-fix-outreach-bugs)
 - PostgreSQL (existing schema, no migrations needed) (003-fix-outreach-bugs)
 
+
 ## Recent Changes
 - 001-sdk-backend-parity: Added TypeScript 5.7.3, Node.js (ES Modules) + @anthropic-ai/sdk ^0.39.0, axios ^1.6.7, zod ^3.24.2
