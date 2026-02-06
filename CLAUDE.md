@@ -128,6 +128,8 @@ Currently no test framework configured. When adding tests:
 ## Active Technologies
 - TypeScript 5.7.3, Node.js (ES Modules) + @anthropic-ai/sdk ^0.39.0, axios ^1.6.7, zod ^3.24.2 (001-sdk-backend-parity)
 - N/A (SDK is stateless, calls backend API) (001-sdk-backend-parity)
+- TypeScript 5.7.3, Node.js (ES Modules) + vitest (new), @anthropic-ai/sdk, axios (002-outreach-integration-tests)
+- N/A (tests call backend API) (002-outreach-integration-tests)
 
 ## Recent Changes
 - 001-sdk-backend-parity: Added TypeScript 5.7.3, Node.js (ES Modules) + @anthropic-ai/sdk ^0.39.0, axios ^1.6.7, zod ^3.24.2
