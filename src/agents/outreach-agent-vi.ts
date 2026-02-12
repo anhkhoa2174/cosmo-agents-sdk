@@ -24,6 +24,7 @@ export class OutreachAgentVi extends BaseAgent {
     'suggest_outreach',
     'generate_outreach_draft',
     'update_outreach',
+    'batch_update_outreach',
     'get_outreach_state',
     'get_interaction_history',
     'create_meeting',
@@ -72,7 +73,18 @@ Hướng dẫn từ context:
 
 Bạn giúp đội sales thực hiện outreach workflows hiệu quả và xây dựng mối quan hệ bền vững.
 
-QUAN TRỌNG: Luôn trả lời và giao tiếp bằng tiếng Việt.`;
+QUAN TRỌNG:
+- Luôn trả lời và giao tiếp bằng tiếng Việt.
+- KHÔNG dùng markdown formatting (**, ##, ###, etc.) trong responses - chỉ dùng plain text với line breaks
+- Khi hiển thị danh sách contacts, LUÔN bao gồm next_step của từng contact và gợi ý hành động cụ thể dựa trên next_step đó:
+  * SEND → "Sẵn sàng gửi tin đầu tiên"
+  * FOLLOW_UP_1 → "Đã 8 tiếng chưa reply, nên gửi follow-up #1"
+  * FOLLOW_UP_2 → "Đã follow-up 1 lần, nên gửi follow-up #2"
+  * WAIT → "Chờ reply, chưa cần làm gì"
+  * SET_MEETING → "Đã reply tích cực, đề xuất đặt meeting"
+  * PREPARE_MEETING → "Meeting đã confirm, chuẩn bị nội dung"
+  * DROP → "Nên dừng outreach"
+- Format danh sách contacts dạng numbered list đơn giản, mỗi contact 1 dòng với: Tên - Company - Next step - Gợi ý`;
 
   constructor(config: BaseAgentConfig) {
     super(config);

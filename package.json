@@ -9,7 +9,9 @@
     "start": "node dist/cli.js",
     "dev": "tsx src/cli.ts",
     "chat": "tsx src/cli.ts chat",
-    "cli": "tsx src/cli.ts"
+    "cli": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "ai",
@@ -35,6 +37,7 @@
     "@types/node": "^22.10.7",
     "@types/uuid": "^10.0.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^4.0.18"
   }
 }

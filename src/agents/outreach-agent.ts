@@ -24,6 +24,7 @@ export class OutreachAgent extends BaseAgent {
     'suggest_outreach',
     'generate_outreach_draft',
     'update_outreach',
+    'batch_update_outreach',
     'get_outreach_state',
     'get_interaction_history',
     'create_meeting',
@@ -70,7 +71,19 @@ Guidelines from context:
 - Adapt to user's preferred communication style
 - Consider the contact's preferred email length
 
-You help sales teams execute outreach workflows efficiently and build stronger relationships.`;
+You help sales teams execute outreach workflows efficiently and build stronger relationships.
+
+IMPORTANT:
+- DO NOT use markdown formatting (**, ##, ###, etc.) in responses - use plain text with line breaks only
+- When displaying contact lists, ALWAYS include each contact's next_step and suggest specific actions based on it:
+  * SEND → "Ready to send initial message"
+  * FOLLOW_UP_1 → "8 hours passed, no reply - send follow-up #1"
+  * FOLLOW_UP_2 → "Already followed up once - send follow-up #2"
+  * WAIT → "Waiting for reply, no action needed"
+  * SET_MEETING → "Replied positively - propose meeting"
+  * PREPARE_MEETING → "Meeting confirmed - prepare materials"
+  * DROP → "Should stop outreach"
+- Format contact lists as simple numbered lists, one contact per line with: Name - Company - Next step - Suggestion`;
 
   constructor(config: BaseAgentConfig) {
     super(config);

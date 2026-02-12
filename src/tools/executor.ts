@@ -110,6 +110,8 @@ export class ToolExecutor {
           return await this.generateOutreachDraft(input);
         case 'update_outreach':
           return await this.updateOutreach(input);
+        case 'batch_update_outreach':
+          return await this.batchUpdateOutreach(input);
         case 'get_outreach_state':
           return await this.getOutreachState(input);
         case 'get_interaction_history':
@@ -145,19 +147,24 @@ export class ToolExecutor {
   private async searchContacts(input: Record<string, unknown>): Promise<string> {
     const filter: Record<string, unknown> = {};
 
-    // Text search query (searches multiple fields with OR)
+    // Quick text search by name (simplified to avoid complex $or with fuzzy filters)
     if (input.query) {
-      const query = input.query as string;
-      filter.$or = [
-        { company: query },
-        { job_title: query },
-        { email: query },
-        { name: query },
-        { city: query },
-      ];
+      filter.name = input.query as string;
     }
 
-    // Specific filters (exact match)
+    // Specific field filters (support individual field searching)
+    if (input.name) {
+      filter.name = input.name as string;
+    }
+    if (input.email) {
+      filter.email = input.email as string;
+    }
+    if (input.company) {
+      filter.company = input.company as string;
+    }
+    if (input.job_title) {
+      filter.job_title = input.job_title as string;
+    }
     if (input.city) {
       filter.city = input.city as string;
     }
@@ -170,8 +177,11 @@ export class ToolExecutor {
     if (input.contact_channel) {
       filter.contact_channel = input.contact_channel as string;
     }
-    if (input.lifecycle_stage) {
-      filter.lifecycle_stage = input.lifecycle_stage as string;
+    if (input.next_step) {
+      filter.next_step = input.next_step as string;
+    }
+    if (input.outreach_stage) {
+      filter.outreach_stage = input.outreach_stage as string;
     }
     if (input.status) {
       filter.status = input.status as string;
@@ -198,7 +208,8 @@ export class ToolExecutor {
           country: c.country,
           industry: c.industry,
           contact_channel: c.contact_channel,
-          lifecycle_stage: c.lifecycle_stage,
+          next_step: c.next_step,
+          outreach_stage: c.outreach_stage,
           status: c.status,
         };
       }),
@@ -1412,6 +1423,42 @@ export class ToolExecutor {
       contact_id: contactId,
       event,
       message: `Outreach updated: ${event}`,
+    });
+  }
+
+  private async batchUpdateOutreach(input: Record<string, unknown>): Promise<string> {
+    const updates = input.updates as Array<{
+      contact_id: string;
+      event: string;
+      content?: string;
+      channel?: string;
+      sentiment?: string;
+    }>;
+
+    if (!updates || updates.length === 0) {
+      return JSON.stringify({ error: 'updates array is required' });
+    }
+
+    const results = await this.client.batchUpdateOutreach(
+      updates.map((u) => ({
+        contact_id: u.contact_id,
+        event: u.event,
+        content: u.content,
+        channel: u.channel || 'LinkedIn',
+        sentiment: u.sentiment,
+      }))
+    );
+
+    const successCount = results.filter((r: any) => r.success).length;
+    const failCount = results.length - successCount;
+
+    return JSON.stringify({
+      success: true,
+      total: results.length,
+      succeeded: successCount,
+      failed: failCount,
+      results,
+      message: `Batch update: ${successCount} succeeded, ${failCount} failed`,
     });
   }
 

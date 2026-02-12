@@ -16,7 +16,23 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
       properties: {
         query: {
           type: 'string',
-          description: 'Text search query (searches name, email, company, job_title)',
+          description: 'Quick text search by name only (for general searches). For more specific searches, use the individual field filters below.',
+        },
+        name: {
+          type: 'string',
+          description: 'Filter by contact name (supports fuzzy matching)',
+        },
+        email: {
+          type: 'string',
+          description: 'Filter by email address',
+        },
+        company: {
+          type: 'string',
+          description: 'Filter by company name (supports fuzzy matching)',
+        },
+        job_title: {
+          type: 'string',
+          description: 'Filter by job title (supports fuzzy matching)',
         },
         city: {
           type: 'string',
@@ -34,9 +50,13 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
           type: 'string',
           description: 'Filter by contact channel (e.g., "LinkedIn", "Email")',
         },
-        lifecycle_stage: {
+        next_step: {
           type: 'string',
-          description: 'Filter by lifecycle stage (new, contacted, replied, qualified, proposal, won, lost)',
+          description: 'Filter by next step (SEND, WAIT, FOLLOW_UP_1, FOLLOW_UP_2, SET_MEETING, FOLLOW_UP_MEETING_1, FOLLOW_UP_MEETING_2, PREPARE_MEETING, FOLLOW_UP, DROP)',
+        },
+        outreach_stage: {
+          type: 'string',
+          description: 'Filter by outreach stage (COLD, NO_REPLY, REPLIED, POST_MEETING, DROPPED)',
         },
         status: {
           type: 'string',
@@ -962,7 +982,7 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
   {
     name: 'update_outreach',
     description:
-      'Update outreach status after sending a message, receiving a reply, or marking no reply. This logs the interaction and updates the contact state.',
+      'Update outreach status after an event. Flow: sent → no_reply/replied → meeting_booked → meeting_confirmed/no_confirmation → meeting_done. Use meeting_confirmed when customer confirms the meeting, no_confirmation when they haven\'t confirmed yet.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -972,8 +992,8 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
         },
         event: {
           type: 'string',
-          enum: ['sent', 'replied', 'no_reply', 'meeting_booked', 'meeting_done', 'drop'],
-          description: 'The outreach event: sent (message sent), replied (contact replied), no_reply (no response), meeting_booked, meeting_done, drop (stop outreach)',
+          enum: ['sent', 'replied', 'no_reply', 'meeting_booked', 'meeting_confirmed', 'no_confirmation', 'meeting_done', 'drop'],
+          description: 'The outreach event: sent (message sent), replied (contact replied), no_reply (no response), meeting_booked (meeting proposed), meeting_confirmed (customer confirmed meeting), no_confirmation (no meeting confirmation - need follow-up), meeting_done (meeting completed), drop (stop outreach)',
         },
         content: {
           type: 'string',
@@ -991,6 +1011,50 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ['contact_id', 'event'],
+    },
+  },
+  {
+    name: 'batch_update_outreach',
+    description:
+      'Update outreach status for MULTIPLE contacts at once. Use this when the user wants to log the same or different events for several contacts in one go (e.g., "I sent messages to these 5 people" or "mark all these as sent").',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        updates: {
+          type: 'array',
+          description: 'Array of outreach updates, each with contact_id and event',
+          items: {
+            type: 'object',
+            properties: {
+              contact_id: {
+                type: 'string',
+                description: 'The contact ID to update',
+              },
+              event: {
+                type: 'string',
+                enum: ['sent', 'replied', 'no_reply', 'meeting_booked', 'meeting_confirmed', 'no_confirmation', 'meeting_done', 'drop'],
+                description: 'The outreach event',
+              },
+              content: {
+                type: 'string',
+                description: 'Message content (optional)',
+              },
+              channel: {
+                type: 'string',
+                enum: ['LinkedIn', 'Email', 'Call', 'Meeting', 'Note'],
+                description: 'Channel of interaction (default: LinkedIn)',
+              },
+              sentiment: {
+                type: 'string',
+                enum: ['positive', 'neutral', 'negative'],
+                description: 'Sentiment of reply (for replied events)',
+              },
+            },
+            required: ['contact_id', 'event'],
+          },
+        },
+      },
+      required: ['updates'],
     },
   },
   {
@@ -1332,6 +1396,7 @@ export type ToolName =
   | 'suggest_outreach'
   | 'generate_outreach_draft'
   | 'update_outreach'
+  | 'batch_update_outreach'
   | 'get_outreach_state'
   | 'get_interaction_history'
   | 'add_interaction'
