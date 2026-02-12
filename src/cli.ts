@@ -231,7 +231,6 @@ async function getOrRefreshToken(baseUrl: string): Promise<string> {
   const method = await promptAuthMethod();
 
   if (method === 'apikey') {
-    // Paste API key directly and save to .env
     return await promptAndSaveApiKey(
       'COSMO_API_KEY',
       'Paste your COSMO API key (JWT token from the dashboard):'
@@ -414,9 +413,132 @@ async function startChat(model: string, agentType: AgentType = 'cosmo', sessionI
     console.log(chalk.gray(`Session: ${sessionId}`));
   }
   console.log('');
+
+  // Auto-suggest outreach contacts on startup
+  if (agentType === 'outreach' || agentType === 'cosmo') {
+    try {
+      console.log(chalk.cyan('📬 Daily Outreach Dashboard\n'));
+      const client = new CosmoApiClient({ apiKey: cosmoApiKey, baseUrl: cosmoBaseUrl });
+
+      // Fetch data in parallel
+      const [coldContacts, followupContacts, allMeetings] = await Promise.all([
+        client.suggestOutreach('cold', 10),
+        client.suggestOutreach('followup', 10),
+        client.getAllMeetings().catch(() => []),
+      ]);
+
+      // Filter meetings for today and this week
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+      const weekEnd = new Date(todayStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      const meetingsToday = allMeetings.filter((m: any) => {
+        const meetingTime = new Date(m.time);
+        return m.status === 'scheduled' && meetingTime >= todayStart && meetingTime < todayEnd;
+      });
+
+      const meetingsThisWeek = allMeetings.filter((m: any) => {
+        const meetingTime = new Date(m.time);
+        return m.status === 'scheduled' && meetingTime >= todayStart && meetingTime < weekEnd;
+      });
+
+      const needsPrep = followupContacts.filter((c: any) => c.next_step === 'PREPARE_MEETING');
+      const needsConfirm = followupContacts.filter((c: any) =>
+        c.next_step === 'FOLLOW_UP_MEETING_1' || c.next_step === 'FOLLOW_UP_MEETING_2'
+      );
+      const setMeeting = followupContacts.filter((c: any) => c.next_step === 'SET_MEETING');
+
+      // Summary stats
+      console.log(chalk.bold('📊 Tổng quan hôm nay:'));
+      console.log(chalk.gray(`  • ${coldContacts.length} contacts sẵn sàng gửi tin`));
+      console.log(chalk.gray(`  • ${followupContacts.length} contacts cần follow-up`));
+      console.log(chalk.gray(`  • ${meetingsToday.length} meetings hôm nay`));
+      console.log(chalk.gray(`  • ${meetingsThisWeek.length - meetingsToday.length} meetings tuần này`));
+      if (needsPrep.length > 0) {
+        console.log(chalk.yellow(`  • ${needsPrep.length} meetings cần chuẩn bị`));
+      }
+      if (setMeeting.length > 0) {
+        console.log(chalk.green(`  • ${setMeeting.length} contacts nóng - sẵn sàng đặt meeting!`));
+      }
+      console.log('');
+
+      // Meetings today
+      if (meetingsToday.length > 0) {
+        console.log(chalk.bold('📅 Meetings hôm nay:'));
+        meetingsToday.slice(0, 3).forEach((m: any, i: number) => {
+          const time = new Date(m.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+          const title = m.title || 'Meeting';
+          console.log(chalk.gray(`  ${i + 1}. ${time} - ${title}`));
+        });
+        if (meetingsToday.length > 3) {
+          console.log(chalk.gray(`  ... và ${meetingsToday.length - 3} meetings khác`));
+        }
+        console.log('');
+      }
+
+      // Hot leads (set meeting)
+      if (setMeeting.length > 0) {
+        console.log(chalk.bold('🔥 Nóng - Đề xuất meeting ngay:'));
+        setMeeting.slice(0, 3).forEach((c: any, i: number) => {
+          const name = c.contact?.name || 'No name';
+          const company = c.contact?.company || 'No company';
+          console.log(chalk.green(`  ${i + 1}. ${name} - ${company}`));
+        });
+        if (setMeeting.length > 3) {
+          console.log(chalk.gray(`  ... và ${setMeeting.length - 3} contacts khác`));
+        }
+        console.log('');
+      }
+
+      // Cold contacts
+      if (coldContacts.length > 0) {
+        console.log(chalk.bold('📨 Sẵn sàng gửi tin đầu tiên:'));
+        coldContacts.slice(0, 5).forEach((c: any, i: number) => {
+          const name = c.contact?.name || 'No name';
+          const company = c.contact?.company || 'No company';
+          console.log(chalk.gray(`  ${i + 1}. ${name} - ${company}`));
+        });
+        if (coldContacts.length > 5) {
+          console.log(chalk.gray(`  ... và ${coldContacts.length - 5} contacts khác`));
+        }
+        console.log('');
+      }
+
+      // Follow-up contacts
+      if (followupContacts.length > 0) {
+        console.log(chalk.bold('🔄 Cần follow-up:'));
+        followupContacts.slice(0, 5).forEach((c: any, i: number) => {
+          const name = c.contact?.name || 'No name';
+          const company = c.contact?.company || 'No company';
+          const nextStep = c.next_step || 'FOLLOW_UP';
+          const action = nextStep === 'FOLLOW_UP_1' ? 'FU #1 (8h+)' :
+                        nextStep === 'FOLLOW_UP_2' ? 'FU #2' :
+                        nextStep === 'FOLLOW_UP_MEETING_1' ? 'Confirm meeting #1' :
+                        nextStep === 'FOLLOW_UP_MEETING_2' ? 'Confirm meeting #2' :
+                        nextStep === 'PREPARE_MEETING' ? 'Chuẩn bị meeting' :
+                        'Follow-up';
+          console.log(chalk.gray(`  ${i + 1}. ${name} - ${company} - ${action}`));
+        });
+        if (followupContacts.length > 5) {
+          console.log(chalk.gray(`  ... và ${followupContacts.length - 5} contacts khác`));
+        }
+        console.log('');
+      }
+
+      if (coldContacts.length === 0 && followupContacts.length === 0 && meetingsToday.length === 0) {
+        console.log(chalk.gray('  ✨ Không có outreach hôm nay - chillax!\n'));
+      }
+    } catch (error) {
+      // Silently ignore suggestion errors - don't block startup
+      console.log(chalk.gray('  (Không thể load dashboard)\n'));
+    }
+  }
+  console.log('');
   console.log(chalk.white('Type your message and press Enter. Commands:'));
   console.log(chalk.gray('  /reset  - Clear conversation history'));
   console.log(chalk.gray('  /switch <agent> - Switch agent (research, outreach, analytics, enrichment)'));
+  console.log(chalk.gray('  /logout - Clear cached token and re-authenticate'));
   console.log(chalk.gray('  /exit   - Exit the chat\n'));
 
   // Create readline interface
@@ -444,6 +566,21 @@ async function startChat(model: string, agentType: AgentType = 'cosmo', sessionI
       if (trimmed === '/reset') {
         agent.resetConversation();
         console.log(chalk.yellow('Conversation reset.'));
+        prompt();
+        return;
+      }
+
+      if (trimmed === '/logout') {
+        try {
+          if (fs.existsSync(TOKEN_CACHE_FILE)) {
+            fs.unlinkSync(TOKEN_CACHE_FILE);
+          }
+          console.log(chalk.yellow('Token cleared. Restarting authentication...'));
+          rl.close();
+          process.exit(0);
+        } catch {
+          console.log(chalk.red('Failed to clear token'));
+        }
         prompt();
         return;
       }

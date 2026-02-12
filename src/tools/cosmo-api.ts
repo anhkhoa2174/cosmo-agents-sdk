@@ -27,7 +27,7 @@ export interface Contact {
   // Outreach context fields
   industry?: string;
   contact_channel?: string;
-  lifecycle_stage?: string;
+  outreach_stage?: string;
   context_level?: string;
   outreach_decision?: string;
   scenario?: string;
@@ -371,8 +371,8 @@ export type ConversationState = 'COLD' | 'NO_REPLY' | 'REPLIED' | 'POST_MEETING'
 export type ContextLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 export type OutreachIntent = 'INTRO' | 'FOLLOW_UP' | 'RE_ENGAGE' | 'POST_MEETING';
 export type OutreachScenario = 'role_based' | 'industry_based' | 'no_reply_followup' | 'post_reply' | 'post_meeting' | 're_engage';
-export type LastOutcome = 'none' | 'sent' | 'no_reply' | 'replied' | 'meeting_booked' | 'meeting_done' | 'dropped';
-export type NextStep = 'SEND' | 'FOLLOW_UP' | 'WAIT' | 'SET_MEETING' | 'DROP';
+export type LastOutcome = 'none' | 'sent' | 'no_reply' | 'replied' | 'meeting_booked' | 'meeting_confirmed' | 'meeting_done' | 'dropped';
+export type NextStep = 'SEND' | 'FOLLOW_UP_1' | 'FOLLOW_UP_2' | 'WAIT' | 'SET_MEETING' | 'FOLLOW_UP_MEETING_1' | 'FOLLOW_UP_MEETING_2' | 'PREPARE_MEETING' | 'FOLLOW_UP' | 'DROP';
 export type MeetingStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show';
 
 /**
@@ -530,6 +530,17 @@ export class CosmoApiClient {
     if (!response.ok) {
       const error = await response.text();
       console.log(`  [API] Error: ${response.status} - ${error.substring(0, 100)}`);
+      if (response.status === 401) {
+        // Clear cached token on authentication failure
+        const os = await import('node:os');
+        const path = await import('node:path');
+        const fs = await import('node:fs');
+        const tokenFile = path.join(os.default.homedir(), '.cosmo-cli-token.json');
+        if (fs.default.existsSync(tokenFile)) {
+          fs.default.unlinkSync(tokenFile);
+          console.log('  [Auth] Token expired. Run /logout and restart to re-authenticate.');
+        }
+      }
       throw new Error(`COSMO API Error: ${response.status} - ${error}`);
     }
 
@@ -1064,6 +1075,41 @@ export class CosmoApiClient {
   }
 
   /**
+   * Batch update outreach for multiple contacts (client-side parallel execution)
+   * @param updates - Array of outreach updates
+   * @returns Array of update results with contact_id and status
+   */
+  async batchUpdateOutreach(updates: UpdateOutreachInput[]): Promise<Array<{
+    contact_id: string;
+    success: boolean;
+    result?: UpdateOutreachResponse;
+    error?: string;
+  }>> {
+    // Execute all updates in parallel
+    const results = await Promise.allSettled(
+      updates.map(update => this.updateOutreach(update))
+    );
+
+    // Map results to include contact_id and success status
+    return results.map((result, index) => {
+      const contactId = updates[index].contact_id;
+      if (result.status === 'fulfilled') {
+        return {
+          contact_id: contactId,
+          success: true,
+          result: result.value,
+        };
+      } else {
+        return {
+          contact_id: contactId,
+          success: false,
+          error: result.reason?.message || 'Unknown error',
+        };
+      }
+    });
+  }
+
+  /**
    * Get outreach state for a contact
    * @param contactId - Contact ID
    */
@@ -1137,6 +1183,18 @@ export class CosmoApiClient {
     const result = await this.request<{ data: Meeting[] }>(
       'GET',
       `/v1/outreach/contacts/${contactId}/meetings`
+    );
+    return result.data;
+  }
+
+  /**
+   * Get all meetings across all contacts
+   * @returns List of all meetings
+   */
+  async getAllMeetings(): Promise<Meeting[]> {
+    const result = await this.request<{ data: Meeting[] }>(
+      'GET',
+      '/v1/outreach/meetings'
     );
     return result.data;
   }
