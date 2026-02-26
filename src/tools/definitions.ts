@@ -10,7 +10,7 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
   {
     name: 'search_contacts',
     description:
-      'Search for contacts in COSMO CRM. Returns total count of matching contacts and a paginated list. Use this to find contacts by name, email, company, city, country, industry, or other attributes. To get total count, call with no filters.',
+      'Search for contacts in COSMO CRM by name, email, company, city, country, industry, or other attributes. Do NOT use this for outreach suggestions - use suggest_outreach instead.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -77,7 +77,7 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
   {
     name: 'get_contact',
     description:
-      'Get detailed information about a specific contact including AI insights, relationship scores, and segment membership.',
+      'Get detailed information about a SINGLE contact including AI insights and relationship scores. Only use when you need AI insights not available from search_contacts. Do NOT call this in a loop for multiple contacts - search_contacts already returns full contact details.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -942,7 +942,7 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
   {
     name: 'suggest_outreach',
     description:
-      'Get suggested contacts for outreach. Returns contacts that need cold outreach, follow-up, or both. Use this to find contacts to work on today.',
+      'Get suggested contacts for outreach with full contact details (name, company, job title, LinkedIn, etc.). Returns contacts that need cold outreach, follow-up, or both. This is the ONLY tool needed to list contacts for outreach - do NOT call search_contacts additionally.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -962,7 +962,7 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
   {
     name: 'generate_outreach_draft',
     description:
-      'Generate an AI-powered message draft for a contact based on their profile, conversation history, and outreach state. Supports English and Vietnamese.',
+      'Generate an AI-powered message draft for a SINGLE contact. For 2+ contacts, ALWAYS use batch_generate_outreach_draft instead. ONLY generates draft - does NOT send or update stage. Display format: **[contact_name]** - [LinkedIn URL] then the full message. Do NOT show location, company, or other unnecessary fields.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -972,11 +972,36 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
         },
         language: {
           type: 'string',
-          enum: ['en', 'vi'],
-          description: 'Language for the generated draft. en=English, vi=Vietnamese. Default: vi',
+          enum: ['auto', 'en', 'vi', 'ja'],
+          description: 'Language for the generated draft. auto=auto-detect from contact name and location (default), en=English, vi=Vietnamese, ja=Japanese.',
         },
       },
       required: ['contact_id'],
+    },
+  },
+  {
+    name: 'batch_generate_outreach_draft',
+    description:
+      'Generate AI-powered message drafts for MULTIPLE contacts in a single API call. ALWAYS use this instead of calling generate_outreach_draft in a loop when the user wants drafts for 2 or more contacts. Maximum 50 contacts per batch. ONLY generates drafts - does NOT send or update outreach stage. When displaying results, ALWAYS number each contact and show in this format:\n\n**1. [contact_name]** - [contact_information (LinkedIn URL)]\n[full draft message]\n\n**2. [contact_name]** - [contact_information (LinkedIn URL)]\n[full draft message]\n\nDo NOT show location, company, job title, or other unnecessary fields. ONLY show: number, contact name, LinkedIn URL, and message.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contact_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of contact IDs to generate drafts for (max 50)',
+        },
+        language: {
+          type: 'string',
+          enum: ['auto', 'en', 'vi'],
+          description: 'Language for the generated drafts. auto=auto-detect from contact name (default), en=English, vi=Vietnamese.',
+        },
+        auto_send: {
+          type: 'boolean',
+          description: 'If true, also log as "sent" and update outreach stage. Default: false. Only use when user EXPLICITLY asks to send/save/gửi.',
+        },
+      },
+      required: ['contact_ids'],
     },
   },
   {
@@ -1395,6 +1420,7 @@ export type ToolName =
   // Outreach tools (Phase 2)
   | 'suggest_outreach'
   | 'generate_outreach_draft'
+  | 'batch_generate_outreach_draft'
   | 'update_outreach'
   | 'batch_update_outreach'
   | 'get_outreach_state'

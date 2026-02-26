@@ -108,6 +108,8 @@ export class ToolExecutor {
           return await this.suggestOutreach(input);
         case 'generate_outreach_draft':
           return await this.generateOutreachDraft(input);
+        case 'batch_generate_outreach_draft':
+          return await this.batchGenerateOutreachDraft(input);
         case 'update_outreach':
           return await this.updateOutreach(input);
         case 'batch_update_outreach':
@@ -203,10 +205,11 @@ export class ToolExecutor {
           name: c.name || c.email,
           email: c.email,
           company: c.company,
-          title: c.title,
+          job_title: c.job_title || c.title,
           city: c.city,
           country: c.country,
           industry: c.industry,
+          contact_information: c.contact_information,
           contact_channel: c.contact_channel,
           next_step: c.next_step,
           outreach_stage: c.outreach_stage,
@@ -1373,8 +1376,9 @@ export class ToolExecutor {
 
     return JSON.stringify({
       type,
-      count: result.length,
-      suggestions: result.map((s: any) => ({
+      total: result.total,
+      count: result.suggestions.length,
+      suggestions: result.suggestions.map((s: any) => ({
         contact_id: s.contact?.id,
         name: s.contact?.name || 'Unknown',
         company: s.contact?.company,
@@ -1390,7 +1394,7 @@ export class ToolExecutor {
 
   private async generateOutreachDraft(input: Record<string, unknown>): Promise<string> {
     const contactId = input.contact_id as string;
-    const language = (input.language as Language) || 'vi';
+    const language = (input.language as Language) || 'auto';
 
     const result = await this.client.generateOutreachDraft(contactId, language);
 
@@ -1399,7 +1403,40 @@ export class ToolExecutor {
       draft: result.draft,
       state: result.state,
       scenario: result.scenario,
+      contact_name: result.contact_name,
+      contact_company: result.contact_company,
+      contact_job_title: result.contact_job_title,
+      contact_information: result.contact_information,
+      contact_channel: result.contact_channel,
       language,
+    });
+  }
+
+  private async batchGenerateOutreachDraft(input: Record<string, unknown>): Promise<string> {
+    const contactIds = input.contact_ids as string[];
+    const language = (input.language as Language) || 'auto';
+    const autoSend = (input.auto_send as boolean) || false;
+
+    if (!contactIds || contactIds.length === 0) {
+      return JSON.stringify({ error: 'contact_ids array is required' });
+    }
+
+    const result = await this.client.batchGenerateOutreachDraft(contactIds, language, autoSend);
+
+    const sentCount = result.results.filter((r: { sent?: boolean }) => r.sent).length;
+    let message = `Batch draft: ${result.succeeded} succeeded, ${result.failed} failed`;
+    if (autoSend) {
+      message += `, ${sentCount} sent`;
+    }
+
+    return JSON.stringify({
+      success: true,
+      total: result.total,
+      succeeded: result.succeeded,
+      failed: result.failed,
+      sent: autoSend ? sentCount : undefined,
+      results: result.results,
+      message,
     });
   }
 
@@ -1606,7 +1643,7 @@ export class ToolExecutor {
 
   private async generateMeetingPrep(input: Record<string, unknown>): Promise<string> {
     const meetingId = input.meeting_id as string;
-    const language = (input.language as Language) || 'vi';
+    const language = (input.language as Language) || 'auto';
 
     const result = await this.client.generateMeetingPrep(meetingId, language);
 

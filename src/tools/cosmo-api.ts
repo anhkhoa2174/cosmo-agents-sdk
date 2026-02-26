@@ -24,6 +24,7 @@ export interface Contact {
   country?: string;
   state?: string;
   zip?: string;
+  contact_information?: string; // LinkedIn URL or email
   // Outreach context fields
   industry?: string;
   contact_channel?: string;
@@ -378,7 +379,7 @@ export type MeetingStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show';
 /**
  * Supported languages for AI generation
  */
-export type Language = 'en' | 'vi';
+export type Language = 'auto' | 'en' | 'vi' | 'ja';
 
 export interface OutreachState {
   id: string;
@@ -445,12 +446,22 @@ export interface OutreachSuggestion {
   message_draft?: string;
 }
 
+export interface SuggestOutreachResponse {
+  suggestions: OutreachSuggestion[];
+  total: number;
+}
+
 export interface GenerateDraftResponse {
   contact_id: string;
   draft: string;
   scenario: OutreachScenario;
   context_level: ContextLevel;
   state: OutreachState;
+  contact_name?: string;
+  contact_company?: string;
+  contact_job_title?: string;
+  contact_information?: string;
+  contact_channel?: string;
 }
 
 export interface UpdateOutreachInput {
@@ -1034,8 +1045,8 @@ export class CosmoApiClient {
    * @param type - 'cold', 'followup', or 'mixed'
    * @param limit - Maximum number of contacts to return
    */
-  async suggestOutreach(type: string, limit = 10): Promise<OutreachSuggestion[]> {
-    const result = await this.request<{ data: OutreachSuggestion[] }>(
+  async suggestOutreach(type: string, limit = 10): Promise<SuggestOutreachResponse> {
+    const result = await this.request<{ data: SuggestOutreachResponse }>(
       'GET',
       `/v1/outreach/suggest?type=${type}&limit=${limit}`
     );
@@ -1045,13 +1056,63 @@ export class CosmoApiClient {
   /**
    * Generate outreach draft for a contact
    * @param contactId - Contact ID
-   * @param language - Language for the draft ('en' for English, 'vi' for Vietnamese). Default: 'vi'
+   * @param language - Language for the draft ('auto' for auto-detect from contact name, 'en' for English, 'vi' for Vietnamese). Default: 'auto'
    */
-  async generateOutreachDraft(contactId: string, language: Language = 'vi'): Promise<GenerateDraftResponse> {
+  async generateOutreachDraft(contactId: string, language: Language = 'auto'): Promise<GenerateDraftResponse> {
     const result = await this.request<{ data: GenerateDraftResponse }>(
       'POST',
       `/v1/outreach/contacts/${contactId}/draft`,
       { language }
+    );
+    return result.data;
+  }
+
+  /**
+   * Batch generate outreach drafts for multiple contacts at once
+   * @param contactIds - Array of contact IDs
+   * @param language - Language for the drafts. Default: 'auto'
+   */
+  async batchGenerateOutreachDraft(contactIds: string[], language: Language = 'auto', autoSend: boolean = false): Promise<{
+    total: number;
+    succeeded: number;
+    failed: number;
+    results: Array<{
+      contact_id: string;
+      success: boolean;
+      draft?: string;
+      state?: OutreachState;
+      scenario?: string;
+      contact_name?: string;
+      contact_company?: string;
+      contact_job_title?: string;
+      contact_information?: string;
+      contact_channel?: string;
+      sent?: boolean;
+      error?: string;
+    }>;
+  }> {
+    const result = await this.request<{ data: {
+      total: number;
+      succeeded: number;
+      failed: number;
+      results: Array<{
+        contact_id: string;
+        success: boolean;
+        draft?: string;
+        state?: OutreachState;
+        scenario?: string;
+        contact_name?: string;
+        contact_company?: string;
+        contact_job_title?: string;
+        contact_information?: string;
+        contact_channel?: string;
+        sent?: boolean;
+        error?: string;
+      }>;
+    } }>(
+      'POST',
+      '/v1/outreach/batch-draft',
+      { contact_ids: contactIds, language: language || 'auto', auto_send: autoSend }
     );
     return result.data;
   }
@@ -1204,10 +1265,10 @@ export class CosmoApiClient {
    * Includes meeting objectives, talking points, discovery questions, potential objections, and suggested next steps.
    * Only works for scheduled meetings.
    * @param meetingId - The meeting ID to generate prep for
-   * @param language - Language for the prep ('en' for English, 'vi' for Vietnamese). Default: 'vi'
+   * @param language - Language for the prep ('auto' for auto-detect from contact name, 'en' for English, 'vi' for Vietnamese). Default: 'auto'
    * @returns Meeting object with meeting_prep field populated
    */
-  async generateMeetingPrep(meetingId: string, language: Language = 'vi'): Promise<Meeting> {
+  async generateMeetingPrep(meetingId: string, language: Language = 'auto'): Promise<Meeting> {
     const result = await this.request<{ data: Meeting }>(
       'POST',
       `/v1/outreach/meetings/${meetingId}/generate-prep`,

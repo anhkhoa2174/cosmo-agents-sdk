@@ -9,6 +9,14 @@ import { COSMO_TOOLS, type ToolName } from '../tools/definitions.js';
 import { ToolExecutor } from '../tools/executor.js';
 import { v4 as uuidv4 } from 'uuid';
 
+// Max characters for tool result content in older messages
+const TOOL_RESULT_TRUNCATE_LENGTH = 200;
+// Keep the most recent N messages untouched (don't truncate their tool results)
+const RECENT_MESSAGES_TO_KEEP = 6;
+// Rate limit retry config
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY_MS = 2000;
+
 export interface BaseAgentConfig extends CosmoConfig {
   anthropicApiKey: string;
   apolloApiKey?: string;
@@ -113,6 +121,56 @@ export abstract class BaseAgent {
   }
 
   /**
+   * Truncate tool result content in older messages to reduce context size.
+   */
+  private trimConversationHistory(): void {
+    const len = this.conversationHistory.length;
+    if (len <= RECENT_MESSAGES_TO_KEEP) return;
+
+    const cutoff = len - RECENT_MESSAGES_TO_KEEP;
+
+    for (let i = 0; i < cutoff; i++) {
+      const msg = this.conversationHistory[i];
+      if (msg.role === 'user' && Array.isArray(msg.content)) {
+        msg.content = msg.content.map((block) => {
+          if (block.type === 'tool_result' && typeof block.content === 'string' && block.content.length > TOOL_RESULT_TRUNCATE_LENGTH) {
+            return {
+              ...block,
+              content: block.content.substring(0, TOOL_RESULT_TRUNCATE_LENGTH) + '...[truncated]',
+            };
+          }
+          return block;
+        });
+      }
+    }
+  }
+
+  /**
+   * Call Claude API with retry on rate limit (429) errors.
+   */
+  private async createMessageWithRetry(
+    params: Anthropic.MessageCreateParamsNonStreaming
+  ): Promise<Anthropic.Message> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        return await this.anthropic.messages.create(params);
+      } catch (error: unknown) {
+        lastError = error;
+        const isRateLimit = error instanceof Error && 'status' in error && (error as { status: number }).status === 429;
+        if (isRateLimit && attempt < MAX_RETRIES) {
+          const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt);
+          console.log(`  ⏳ Rate limited. Retrying in ${delay / 1000}s... (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw lastError;
+  }
+
+  /**
    * Process a message through the agent
    */
   async chat(userMessage: string): Promise<AgentResult> {
@@ -144,9 +202,12 @@ export abstract class BaseAgent {
     while (iterations < this.maxIterations) {
       iterations++;
 
-      response = await this.anthropic.messages.create({
+      // Trim old messages to reduce token usage
+      this.trimConversationHistory();
+
+      response = await this.createMessageWithRetry({
         model: this.model,
-        max_tokens: 4096,
+        max_tokens: 16384,
         system: this.buildSystemPrompt(),
         tools: this.getTools(),
         messages: this.conversationHistory,

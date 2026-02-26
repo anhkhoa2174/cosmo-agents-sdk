@@ -205,6 +205,47 @@ async function promptAuthMethod(): Promise<'login' | 'apikey'> {
   });
 }
 
+async function promptForAuth(baseUrl: string): Promise<string> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    console.log(chalk.yellow('\n🔑 Authentication required'));
+    console.log(chalk.gray('  1. Login with email/password (recommended)'));
+    console.log(chalk.gray('  2. Paste JWT token directly'));
+    rl.question(chalk.cyan('Choice (1/2): '), async (choice) => {
+      rl.close();
+      if (choice.trim() === '2') {
+        // Paste token
+        const rl2 = readline.createInterface({ input: process.stdin, output: process.stdout });
+        rl2.question(chalk.cyan('Paste JWT token: '), (token) => {
+          rl2.close();
+          const trimmed = token.trim();
+          if (!trimmed) {
+            console.log(chalk.red('No token provided. Exiting.'));
+            process.exit(1);
+          }
+          saveCachedToken(trimmed, baseUrl, 3600);
+          console.log(chalk.green('✓ Token cached.'));
+          resolve(trimmed);
+        });
+      } else {
+        // Login
+        const creds = await promptForCredentials();
+        try {
+          const token = await loginAndGetToken(baseUrl, creds.email, creds.password);
+          resolve(token);
+        } catch (err: any) {
+          console.log(chalk.red(`Login failed: ${err.message}`));
+          process.exit(1);
+        }
+      }
+    });
+  });
+}
+
 async function getOrRefreshToken(baseUrl: string): Promise<string> {
   // 1. Check environment variable first
   if (process.env.COSMO_API_KEY) {
@@ -227,19 +268,8 @@ async function getOrRefreshToken(baseUrl: string): Promise<string> {
     return await loginAndGetToken(baseUrl, email, password);
   }
 
-  // 4. Prompt user to choose method
-  const method = await promptAuthMethod();
-
-  if (method === 'apikey') {
-    return await promptAndSaveApiKey(
-      'COSMO_API_KEY',
-      'Paste your COSMO API key (JWT token from the dashboard):'
-    );
-  }
-
-  // Login with credentials
-  const credentials = await promptForCredentials();
-  return await loginAndGetToken(baseUrl, credentials.email, credentials.password);
+  // 4. Prompt for auth
+  return await promptForAuth(baseUrl);
 }
 
 type AgentType = 'cosmo' | 'research' | 'outreach' | 'analytics' | 'enrichment';
@@ -421,11 +451,16 @@ async function startChat(model: string, agentType: AgentType = 'cosmo', sessionI
       const client = new CosmoApiClient({ apiKey: cosmoApiKey, baseUrl: cosmoBaseUrl });
 
       // Fetch data in parallel
-      const [coldContacts, followupContacts, allMeetings] = await Promise.all([
-        client.suggestOutreach('cold', 10),
-        client.suggestOutreach('followup', 10),
+      const [coldResult, followupResult, allMeetings] = await Promise.all([
+        client.suggestOutreach('cold', 5),
+        client.suggestOutreach('followup', 5),
         client.getAllMeetings().catch(() => []),
       ]);
+
+      const coldContacts = coldResult.suggestions || [];
+      const coldTotal = coldResult.total || 0;
+      const followupContacts = followupResult.suggestions || [];
+      const followupTotal = followupResult.total || 0;
 
       // Filter meetings for today and this week
       const now = new Date();
@@ -449,10 +484,10 @@ async function startChat(model: string, agentType: AgentType = 'cosmo', sessionI
       );
       const setMeeting = followupContacts.filter((c: any) => c.next_step === 'SET_MEETING');
 
-      // Summary stats
-      console.log(chalk.bold('📊 Tổng quan hôm nay:'));
-      console.log(chalk.gray(`  • ${coldContacts.length} contacts sẵn sàng gửi tin`));
-      console.log(chalk.gray(`  • ${followupContacts.length} contacts cần follow-up`));
+      // Summary stats with accurate totals
+      console.log(chalk.bold('  Tổng quan hôm nay:'));
+      console.log(chalk.gray(`  • ${coldTotal} contacts sẵn sàng gửi tin`));
+      console.log(chalk.gray(`  • ${followupTotal} contacts cần follow-up`));
       console.log(chalk.gray(`  • ${meetingsToday.length} meetings hôm nay`));
       console.log(chalk.gray(`  • ${meetingsThisWeek.length - meetingsToday.length} meetings tuần này`));
       if (needsPrep.length > 0) {
@@ -465,7 +500,7 @@ async function startChat(model: string, agentType: AgentType = 'cosmo', sessionI
 
       // Meetings today
       if (meetingsToday.length > 0) {
-        console.log(chalk.bold('📅 Meetings hôm nay:'));
+        console.log(chalk.bold('  Meetings hôm nay:'));
         meetingsToday.slice(0, 3).forEach((m: any, i: number) => {
           const time = new Date(m.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
           const title = m.title || 'Meeting';
@@ -479,7 +514,7 @@ async function startChat(model: string, agentType: AgentType = 'cosmo', sessionI
 
       // Hot leads (set meeting)
       if (setMeeting.length > 0) {
-        console.log(chalk.bold('🔥 Nóng - Đề xuất meeting ngay:'));
+        console.log(chalk.bold('  Nóng - Đề xuất meeting ngay:'));
         setMeeting.slice(0, 3).forEach((c: any, i: number) => {
           const name = c.contact?.name || 'No name';
           const company = c.contact?.company || 'No company';
@@ -492,22 +527,22 @@ async function startChat(model: string, agentType: AgentType = 'cosmo', sessionI
       }
 
       // Cold contacts
-      if (coldContacts.length > 0) {
-        console.log(chalk.bold('📨 Sẵn sàng gửi tin đầu tiên:'));
+      if (coldTotal > 0) {
+        console.log(chalk.bold(`  Sẵn sàng gửi tin đầu tiên (${coldTotal}):`));
         coldContacts.slice(0, 5).forEach((c: any, i: number) => {
           const name = c.contact?.name || 'No name';
           const company = c.contact?.company || 'No company';
           console.log(chalk.gray(`  ${i + 1}. ${name} - ${company}`));
         });
-        if (coldContacts.length > 5) {
-          console.log(chalk.gray(`  ... và ${coldContacts.length - 5} contacts khác`));
+        if (coldTotal > 5) {
+          console.log(chalk.gray(`  ... và ${coldTotal - 5} contacts khác`));
         }
         console.log('');
       }
 
       // Follow-up contacts
-      if (followupContacts.length > 0) {
-        console.log(chalk.bold('🔄 Cần follow-up:'));
+      if (followupTotal > 0) {
+        console.log(chalk.bold(`  Cần follow-up (${followupTotal}):`));
         followupContacts.slice(0, 5).forEach((c: any, i: number) => {
           const name = c.contact?.name || 'No name';
           const company = c.contact?.company || 'No company';
@@ -520,14 +555,14 @@ async function startChat(model: string, agentType: AgentType = 'cosmo', sessionI
                         'Follow-up';
           console.log(chalk.gray(`  ${i + 1}. ${name} - ${company} - ${action}`));
         });
-        if (followupContacts.length > 5) {
-          console.log(chalk.gray(`  ... và ${followupContacts.length - 5} contacts khác`));
+        if (followupTotal > 5) {
+          console.log(chalk.gray(`  ... và ${followupTotal - 5} contacts khác`));
         }
         console.log('');
       }
 
-      if (coldContacts.length === 0 && followupContacts.length === 0 && meetingsToday.length === 0) {
-        console.log(chalk.gray('  ✨ Không có outreach hôm nay - chillax!\n'));
+      if (coldTotal === 0 && followupTotal === 0 && meetingsToday.length === 0) {
+        console.log(chalk.gray('  Không có outreach hôm nay - chillax!\n'));
       }
     } catch (error) {
       // Silently ignore suggestion errors - don't block startup
