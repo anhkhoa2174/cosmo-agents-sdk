@@ -34,6 +34,12 @@ export class ToolExecutor {
           return await this.getContact(input);
         case 'create_contact':
           return await this.createContact(input);
+        case 'create_campaign':
+          return await this.createCampaign(input);
+        case 'set_campaign_status':
+          return await this.setCampaignStatus(input);
+        case 'list_campaigns':
+          return await this.listCampaignsTool();
         case 'import_contacts_csv':
           return await this.importContactsCSV(input);
         case 'import_csv_from_file':
@@ -229,6 +235,31 @@ export class ToolExecutor {
       ai_insights: contact.ai_insights,
       relationship: contact.profile?.relationship,
     });
+  }
+
+  private async createCampaign(input: Record<string, unknown>): Promise<string> {
+    const campaign = await this.client.createCampaign({
+      playbook: input.playbook as string,
+      name: input.name as string | undefined,
+      list_contact_id: input.list_contact_id as string | undefined,
+      agent_id: input.agent_id as string | undefined,
+    });
+    return JSON.stringify({
+      created: campaign,
+      note: 'Campaign created in DRAFT status. Emails are NOT sent while a campaign is draft — the user must activate it (in the Campaigns UI, or ask you to call set_campaign_status) before any send happens.',
+    });
+  }
+
+  private async setCampaignStatus(input: Record<string, unknown>): Promise<string> {
+    const updated = await this.client.updateCampaign(input.campaign_id as string, {
+      status: input.status as string,
+    });
+    return JSON.stringify({ updated });
+  }
+
+  private async listCampaignsTool(): Promise<string> {
+    const campaigns = await this.client.listCampaigns();
+    return JSON.stringify({ campaigns });
   }
 
   private async createContact(input: Record<string, unknown>): Promise<string> {

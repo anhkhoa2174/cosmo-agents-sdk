@@ -597,6 +597,40 @@ export class CosmoApiClient {
     return contacts;
   }
 
+  async createCampaign(data: {
+    playbook: string;
+    name?: string;
+    list_contact_id?: string;
+    agent_id?: string;
+  }): Promise<Record<string, unknown>> {
+    const result = await this.request<{ data: Record<string, unknown> }>(
+      'POST',
+      '/v1/campaigns',
+      data
+    );
+    return result.data;
+  }
+
+  async updateCampaign(
+    campaignId: string,
+    data: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+    const result = await this.request<{ data: Record<string, unknown> }>(
+      'PATCH',
+      `/v1/campaigns/${campaignId}`,
+      data
+    );
+    return result.data;
+  }
+
+  async listCampaigns(): Promise<Record<string, unknown>[]> {
+    const result = await this.request<{ data: Record<string, unknown>[] }>(
+      'GET',
+      '/v1/campaigns'
+    );
+    return result.data;
+  }
+
   async createContact(data: Partial<Contact>): Promise<Contact> {
     const result = await this.request<{ data: Contact }>(
       'POST',

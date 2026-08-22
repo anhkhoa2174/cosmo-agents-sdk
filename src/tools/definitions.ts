@@ -1358,6 +1358,64 @@ export const COSMO_TOOLS: Anthropic.Tool[] = [
       required: ['apollo_contacts'],
     },
   },
+  {
+    name: 'create_campaign',
+    description:
+      'Create a new email outreach campaign. The campaign is created in DRAFT status: no email is sent until a human activates it (use set_campaign_status only when the user explicitly asks to activate). Pick the playbook that matches the user intent; if none fits, use click_start_from_scratch.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        playbook: {
+          type: 'string',
+          enum: [
+            'revive_dormant_leads',
+            'content_offering',
+            'upsell_to_existing_customers',
+            'event_invite',
+            'webinar_follow_up',
+            'click_start_from_scratch',
+          ],
+          description:
+            'Campaign type: revive_dormant_leads = warm re-engagement of cold/stale prospects; content_offering = share a case study, guide or other content; upsell_to_existing_customers = expand existing accounts; event_invite = invite to an event; webinar_follow_up = follow up webinar attendees; click_start_from_scratch = blank campaign for any other goal.',
+        },
+        name: {
+          type: 'string',
+          description: 'Human-readable campaign name. Omit to auto-generate from the playbook.',
+        },
+        list_contact_id: {
+          type: 'string',
+          description: 'UUID of the contact list to attach (from list_segments or contact lists). Optional.',
+        },
+        agent_id: {
+          type: 'string',
+          description: 'UUID of the email agent (connected mailbox) that will send. Optional.',
+        },
+      },
+      required: ['playbook'],
+    },
+  },
+  {
+    name: 'set_campaign_status',
+    description:
+      "Change a campaign's status. Campaigns only send emails while ACTIVE — draft campaigns never send (that is by design, as the human approval checkpoint). Only set status to active when the user explicitly asks for it.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        campaign_id: { type: 'string', description: 'Campaign UUID' },
+        status: {
+          type: 'string',
+          enum: ['active', 'paused', 'ended', 'draft', 'scheduled'],
+          description: 'Target status. active = sending enabled.',
+        },
+      },
+      required: ['campaign_id', 'status'],
+    },
+  },
+  {
+    name: 'list_campaigns',
+    description: 'List the user\'s campaigns with id, name, playbook type and status.',
+    input_schema: { type: 'object', properties: {} },
+  },
 ];
 
 export type ToolName =
@@ -1416,4 +1474,7 @@ export type ToolName =
   | 'apollo_organization_enrichment'
   | 'apollo_employees_of_company'
   | 'apollo_get_person_email'
-  | 'import_apollo_contacts_to_cosmo';
+  | 'import_apollo_contacts_to_cosmo'
+  | 'create_campaign'
+  | 'set_campaign_status'
+  | 'list_campaigns';
